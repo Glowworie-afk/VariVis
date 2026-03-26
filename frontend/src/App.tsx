@@ -389,7 +389,7 @@ function PieceSection({
   const [activeTab, setActiveTab] = useState<PieceTab>('variations')
 
   // Audio state — local to this section
-  const [audioTime, setAudioTime] = useState(0)
+  const [, setAudioTime] = useState(0)
   const seekToRef = useRef<((sec: number) => void) | null>(null)
 
   const audioSrc = `${API_BASE}/audio/${encodeURIComponent(meta.file_name)}?folder=${encodeURIComponent(meta.folder)}`
