@@ -63,7 +63,9 @@ export default function App() {
       .then(list => {
         setPieces(list)
         setListLoading(false)
-        const first = list.find(p => p.extracted) ?? list[0]
+        const first = list.find(p => p.file_name === 'WAMozart_K265_1')
+          ?? list.find(p => p.extracted)
+          ?? list[0]
         if (first) loadPiece(first)
         // Pre-select first available piece in the Add dropdowns
         const rest = list.filter(p => p.file_name !== (first?.file_name ?? ''))
