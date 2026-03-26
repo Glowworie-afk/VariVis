@@ -46,7 +46,7 @@ interface LoadedPiece {
 // ── App ──────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [lang, setLang] = useState<Lang>('zh')
+  const [lang, setLang] = useState<Lang>('en')
   const theme = getTheme('scientific')
 
   const [pieces,       setPieces]       = useState<PieceMeta[]>([])

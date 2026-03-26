@@ -111,28 +111,27 @@ export function ExtractionPanel({ piece, theme, onDone }: Props) {
       {(phase === 'idle' || phase === 'error') && (
         <div>
           <button
-            onClick={startExtraction}
+            disabled
             style={{
               padding: '9px 22px',
               borderRadius: 8,
               border: 'none',
-              background: '#4361EE',
-              color: '#fff',
+              background: isDark ? '#333' : '#ccc',
+              color: isDark ? '#666' : '#999',
               fontFamily: theme.fontFamily,
               fontSize: 13,
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: 'not-allowed',
               letterSpacing: '0.02em',
             }}
           >
-            {phase === 'error' ? '↺  Retry' : '▶  Extract & Visualise'}
+            ▶  Extract & Visualise
           </button>
           <div style={{
             marginTop: 10, fontSize: 10,
             color: theme.labelSecondaryColor, lineHeight: 1.6,
           }}>
-            This will run <code>extract_features.py</code> then <code>add_pitch_contour.py</code>
-            &nbsp;on the server. Takes ~1–3 min depending on piece length.
+            Extraction is only available when running locally.
           </div>
         </div>
       )}
