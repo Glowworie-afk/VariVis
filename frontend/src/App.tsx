@@ -15,7 +15,7 @@ import { HarmonicFingerprintPage } from './components/HarmonicFingerprintPage'
 import { OverviewPage } from './components/OverviewPage'
 import { ExtractionPanel } from './components/ExtractionPanel'
 import { AudioPlayer } from './components/AudioPlayer'
-import { fetchPieces, fetchFeatures, NotExtractedError } from './api/pieceApi'
+import { fetchPieces, fetchFeatures, NotExtractedError, API_BASE } from './api/pieceApi'
 import type { PieceMeta } from './api/pieceApi'
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ function PieceSection({
   const [audioTime, setAudioTime] = useState(0)
   const seekToRef = useRef<((sec: number) => void) | null>(null)
 
-  const audioSrc = `/api/audio/${encodeURIComponent(meta.file_name)}?folder=${encodeURIComponent(meta.folder)}`
+  const audioSrc = `${API_BASE}/audio/${encodeURIComponent(meta.file_name)}?folder=${encodeURIComponent(meta.folder)}`
 
   function handleSeekToSegment(startSec: number) {
     seekToRef.current?.(startSec)

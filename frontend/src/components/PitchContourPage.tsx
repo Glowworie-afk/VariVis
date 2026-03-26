@@ -15,6 +15,7 @@ import { useState, useMemo, useRef, useCallback } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
 import type { Lang } from '../App'
+import { API_BASE } from '../api/pieceApi'
 import {
   getContourData,
   normaliseContour,
@@ -265,7 +266,7 @@ export function PitchContourPage({ data, theme, isDark, lang, onSeekMain }: Prop
   const audioRef   = useRef<HTMLAudioElement | null>(null)
   const endSecRef  = useRef<number>(0)
 
-  const audioUrl = `/api/audio/${encodeURIComponent(metadata.file_name)}?folder=${encodeURIComponent(metadata.folder)}`
+  const audioUrl = `${API_BASE}/audio/${encodeURIComponent(metadata.file_name)}?folder=${encodeURIComponent(metadata.folder)}`
 
   const handlePlayPause = useCallback((e: React.MouseEvent, idx: number) => {
     e.stopPropagation()

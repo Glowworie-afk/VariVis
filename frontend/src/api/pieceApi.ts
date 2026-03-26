@@ -29,8 +29,12 @@ export interface ExtractionEvent {
 }
 
 // ── API base ───────────────────────────────────────────────────────
+// In production (Vercel), set VITE_API_BASE to the Render backend URL.
+// In local dev, falls back to '/api' (proxied by Vite to localhost:8000).
 
-const BASE = '/api'
+export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '/api'
+
+const BASE = API_BASE
 
 // ── List all pieces ────────────────────────────────────────────────
 
