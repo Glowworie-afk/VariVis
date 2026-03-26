@@ -1,0 +1,25 @@
+# VariVis Backend — Python 依赖
+# 安装命令: pip install -r requirements.txt
+# 建议 Python >= 3.10
+#
+# 调性检测说明：
+#   当前使用 Temperley (2007) 模板 + Pearson 相关，算法等价于：
+#     essentia.standard.Key(profile='temperley')
+#   如需换用 essentia 原生实现（更精确的 HPCP 预处理），可额外安装：
+#     pip install essentia   # 需要 Python 3.8–3.10，Linux/macOS
+
+# 音频特征提取（核心）
+librosa>=0.10.0
+soundfile>=0.12.1      # 支持 32-bit float WAV（数据集里的格式）
+
+# 数值计算
+numpy>=1.24.0
+scipy>=1.10.0
+
+# 数据读取
+pandas>=2.0.0
+openpyxl>=3.1.0        # 读取 .xlsx
+
+# API 服务器（server.py）
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0  # ASGI server，支持 asyncio subprocess 和 SSE
