@@ -2,11 +2,15 @@
  * ExtractionPanel
  * ───────────────
  * Shown when a piece hasn't been extracted yet.
- * Extraction is disabled on the deployed version (no audio files on server).
+ * Extraction is only enabled in local dev mode (import.meta.env.DEV).
  */
 
+import { useState, useRef, useEffect } from 'react'
 import type { ThemeTokens } from '../theme'
-import type { PieceMeta } from '../api/pieceApi'
+import type { PieceMeta, ExtractionEvent } from '../api/pieceApi'
+import { streamExtraction } from '../api/pieceApi'
+
+const IS_DEV = import.meta.env.DEV
 
 interface Props {
   piece: PieceMeta
@@ -14,8 +18,56 @@ interface Props {
   onDone: () => void
 }
 
-export function ExtractionPanel({ piece, theme }: Props) {
+type Phase = 'idle' | 'extracting' | 'pyin' | 'done' | 'error'
+
+const STEP_LABEL: Record<string, string> = {
+  extract: '⚙️  Step 1 / 2 — Extracting audio features (librosa)…',
+  pyin:    '🎵  Step 2 / 2 — Tracking melody pitch (pYIN + KS key detection)…',
+}
+
+export function ExtractionPanel({ piece, theme, onDone }: Props) {
+  const [phase,  setPhase]  = useState<Phase>('idle')
+  const [logs,   setLogs]   = useState<string[]>([])
+  const [errMsg, setErrMsg] = useState('')
+  const cancelRef = useRef<(() => void) | null>(null)
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs])
+
+  useEffect(() => () => { cancelRef.current?.() }, [])
+
+  function startExtraction() {
+    setPhase('extracting')
+    setLogs([])
+    setErrMsg('')
+    const cancel = streamExtraction(piece.file_name, (evt: ExtractionEvent) => {
+      switch (evt.type) {
+        case 'step':
+          setPhase(evt.step === 'pyin' ? 'pyin' : 'extracting')
+          setLogs(l => [...l, STEP_LABEL[evt.step!] ?? evt.step!])
+          break
+        case 'log':
+          setLogs(l => [...l, evt.line!])
+          break
+        case 'done':
+          setPhase('done')
+          setLogs(l => [...l, '✅  Done! Loading visualisation…'])
+          setTimeout(onDone, 800)
+          break
+        case 'error':
+          setPhase('error')
+          setErrMsg(evt.error ?? 'Unknown error')
+          setLogs(l => [...l, `❌  ${evt.error}`])
+          break
+      }
+    })
+    cancelRef.current = cancel
+  }
+
   const isDark = theme.pageBg.startsWith('#0') || theme.pageBg.startsWith('#1')
+  const running = phase === 'extracting' || phase === 'pyin'
 
   return (
     <div style={{
@@ -50,32 +102,83 @@ export function ExtractionPanel({ piece, theme }: Props) {
         </span>
       </div>
 
-      {/* Extract button — disabled on deployed version */}
-      <div>
-        <button
-          disabled
-          style={{
-            padding: '9px 22px',
-            borderRadius: 8,
-            border: 'none',
-            background: isDark ? '#333' : '#ccc',
-            color: isDark ? '#666' : '#999',
-            fontFamily: theme.fontFamily,
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'not-allowed',
-            letterSpacing: '0.02em',
-          }}
-        >
-          ▶  Extract & Visualise
-        </button>
-        <div style={{
-          marginTop: 10, fontSize: 10,
-          color: theme.labelSecondaryColor, lineHeight: 1.6,
-        }}>
-          Extraction is only available when running locally.
+      {/* Extract button */}
+      {(phase === 'idle' || phase === 'error') && (
+        <div>
+          <button
+            onClick={IS_DEV ? startExtraction : undefined}
+            disabled={!IS_DEV}
+            style={{
+              padding: '9px 22px',
+              borderRadius: 8,
+              border: 'none',
+              background: IS_DEV ? '#4361EE' : (isDark ? '#333' : '#ccc'),
+              color: IS_DEV ? '#fff' : (isDark ? '#666' : '#999'),
+              fontFamily: theme.fontFamily,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: IS_DEV ? 'pointer' : 'not-allowed',
+              letterSpacing: '0.02em',
+            }}
+          >
+            {phase === 'error' ? '↺  Retry' : '▶  Extract & Visualise'}
+          </button>
+          {!IS_DEV && (
+            <div style={{
+              marginTop: 10, fontSize: 10,
+              color: theme.labelSecondaryColor, lineHeight: 1.6,
+            }}>
+              Extraction is only available when running locally.
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Progress bar — dev only */}
+      {running && (
+        <div style={{
+          height: 3, borderRadius: 2,
+          background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+          marginBottom: 12, overflow: 'hidden',
+        }}>
+          <div style={{
+            height: '100%',
+            width: phase === 'pyin' ? '65%' : '35%',
+            background: '#4361EE',
+            borderRadius: 2,
+            transition: 'width 0.8s ease',
+          }} />
+        </div>
+      )}
+
+      {/* Log output — dev only */}
+      {logs.length > 0 && (
+        <div style={{
+          marginTop: 14, maxHeight: 240, overflowY: 'auto',
+          background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.04)',
+          borderRadius: 8, padding: '10px 14px',
+          fontSize: 11, lineHeight: 1.8,
+          color: theme.labelColor, fontFamily: 'monospace',
+          border: theme.cardBorder,
+        }}>
+          {logs.map((l, i) => (
+            <div key={i} style={{ opacity: i === logs.length - 1 ? 1 : 0.65, whiteSpace: 'pre-wrap' }}>
+              {l}
+            </div>
+          ))}
+          <div ref={logEndRef} />
+        </div>
+      )}
+
+      {errMsg && (
+        <div style={{
+          marginTop: 12, padding: '8px 12px', borderRadius: 6,
+          background: isDark ? '#2a0a0a' : '#fff0f0',
+          color: '#e05', fontSize: 11, fontFamily: 'monospace',
+        }}>
+          {errMsg}
+        </div>
+      )}
     </div>
   )
 }
