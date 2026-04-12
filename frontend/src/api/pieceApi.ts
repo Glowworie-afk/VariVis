@@ -104,3 +104,42 @@ export function streamExtraction(
 
   return () => es.close()
 }
+
+// ── MIDI Analysis ──────────────────────────────────────────────────
+
+export interface MidiAnalysisData {
+  matched:       boolean
+  file_name:     string
+  midi_file?:    string
+  message?:      string
+  total_bars?:   number
+  beats_per_bar?: number
+  seg_method?:   string   // "annotation" | "fallback"
+  chroma?:       number[][]  // [seg][pc 0-11], normalised 0-1
+  key_root?:     number[]    // 0-11, detected tonic per segment
+  key_mode?:     string[]    // "major" | "minor" per segment
+  var_labels?:   string[]
+  var_starts?:   number[]
+  var_ends?:     number[]
+  mel_mean?:     number[]
+  mel_lo?:       number[]
+  mel_hi?:       number[]
+  stp_r?:        number[]
+  lp_r?:         number[]
+  mean_iv?:      number[]
+  harm_t?:       number[]
+  harm_d?:       number[]
+  harm_s?:       number[]
+  vel_mean?:     number[]
+  vel_std?:      number[]
+  rhy_quarter?:  number[]
+  rhy_8th?:      number[]
+  rhy_16th?:     number[]
+  rhy_32nd?:     number[]
+}
+
+export async function fetchMidiAnalysis(fileName: string): Promise<MidiAnalysisData> {
+  const res = await fetch(`${BASE}/midi/${encodeURIComponent(fileName)}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}

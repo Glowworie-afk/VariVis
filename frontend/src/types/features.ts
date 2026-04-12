@@ -37,6 +37,9 @@ export interface SegmentFeatures {
   // ── Rhythm ──
   onset_density: number          // onsets per second
   tempo: number                  // BPM (unreliable on very slow segments)
+  rhythm_regularity?: number     // 0–1: 1/(1+CoV of inter-onset intervals)
+                                 // 1 = perfectly uniform (flowing), 0 = chaotic
+                                 // Yang & Chen (2012) §3.3: fluent rhythm → positive valence
 
   // ── Texture ──
   spectral_contrast_mean: number[] // [7] bands

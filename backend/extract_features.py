@@ -202,10 +202,23 @@ def extract_segment_features(y: np.ndarray, sr: int, label: str, compressed_fram
     features["spectral_centroid_mean"] = safe_float(np.mean(centroid))
     features["spectral_centroid_std"]  = safe_float(np.std(centroid))
 
-    # ── 5. 节奏：Onset密度 + 速度估计 ──
+    # ── 5. 节奏：Onset密度 + 速度估计 + 节奏规律性 ──
     onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units='time')
     duration_sec = len(y) / sr
     features["onset_density"] = safe_float(len(onset_frames) / duration_sec if duration_sec > 0 else 0)
+
+    # rhythm_regularity: 1/(1+CoV of inter-onset intervals)
+    # Flowing/uniform rhythm → high regularity (positive valence proxy)
+    # Irregular/syncopated  → low regularity  (negative valence proxy)
+    # Ref: Yang & Chen (2012) §3.3 — rhythm fluency and valence
+    if len(onset_frames) >= 3:
+        intervals = np.diff(onset_frames)
+        mean_ioi = float(np.mean(intervals))
+        std_ioi  = float(np.std(intervals))
+        cov      = std_ioi / mean_ioi if mean_ioi > 0 else 1.0
+        features["rhythm_regularity"] = safe_float(1.0 / (1.0 + cov))
+    else:
+        features["rhythm_regularity"] = 0.5   # not enough onsets to measure
 
     # 预先计算起音分桶，供 compressed 使用（每个窗口的真实起音次数）
     def _onset_count_per_frame(onset_times, duration, n_frames):

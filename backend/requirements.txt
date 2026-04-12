@@ -23,3 +23,10 @@ openpyxl>=3.1.0        # 读取 .xlsx
 # API 服务器（server.py）
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0  # ASGI server，支持 asyncio subprocess 和 SSE
+
+# MIDI 分析（MIDIAnalysisPage）
+mido>=1.3.0                  # MIDI 文件解析
+
+# 乐谱分析（ScoreAnalysisPage）
+google-generativeai>=0.7.0  # Gemini API（分析乐谱图像）
+pymupdf>=1.24.0              # PDF → PNG 页面渲染（fitz）
