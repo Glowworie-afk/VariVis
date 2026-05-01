@@ -3,12 +3,10 @@ import type { PieceData } from './types/features'
 import { getTheme } from './theme'
 
 export type Lang = 'zh' | 'en'
-import { TimbrePCA }              from './components/TimbrePCA'
 import { OverviewPage }           from './components/OverviewPage'
 import { MentalLandscapePage }    from './components/MentalLandscapePage'
 import { ScorePage }              from './components/ScorePage'
 import { CorpusStyleView }        from './components/CorpusStyleView'
-import TensionOrnamentPage        from './components/TensionOrnamentPage'
 import SymbolicHeatmapPage        from './components/SymbolicHeatmapPage'
 import { MusicVisPage }           from './components/MusicVisPage'
 import { ExtractionPanel }        from './components/ExtractionPanel'
@@ -115,28 +113,22 @@ function pieceColor(idx: number) {
 
 type PieceTab =
   | 'corpus_view'
-  | 'mfcc'
   | 'overview'
   | 'mentallandscape'
-  | 'tension_ornament'
   | 'symbolic_heatmap'
 
 const AUDIO_TABS: PieceTab[] = [
   'corpus_view',
   'mentallandscape',
-  'tension_ornament',
   'symbolic_heatmap',
-  'mfcc',
   'overview',
 ]
 
 const TAB_LABELS: Record<PieceTab, { zh: string; en: string; icon: string }> = {
-  corpus_view:       { zh: '焦点概览',   en: 'Focus View',          icon: '' },
-  tension_ornament:  { zh: '张力×装饰音', en: 'Tension × Ornament', icon: '' },
-  mfcc:              { zh: '音色 PCA',  en: 'Timbre PCA',           icon: '' },
-  overview:          { zh: '综合视图',  en: 'Overview',              icon: '' },
-  mentallandscape:   { zh: '心理图景',  en: 'Mental Landscape',      icon: '' },
-  symbolic_heatmap:  { zh: '差异热力图', en: 'Delta Heatmap',        icon: '' },
+  corpus_view:       { zh: '焦点概览',   en: 'Focus View',    icon: '' },
+  overview:          { zh: '综合视图',  en: 'Overview',        icon: '' },
+  mentallandscape:   { zh: '心理图景',  en: 'Mental Landscape',icon: '' },
+  symbolic_heatmap:  { zh: '差异热力图', en: 'Delta Heatmap',  icon: '' },
 }
 
 // ── State types ──────────────────────────────────────────────────────
@@ -711,19 +703,8 @@ function PieceSection({
             selectedSeg={selectedSeg} onSegSelect={handleSegSelect}
           />
         )}
-        {viewState === 'ready' && data && activeTab === 'tension_ornament' && (
-          <TensionOrnamentPage
-            fileName={meta.file_name}
-            theme={theme}
-            lang={lang}
-            nVariations={data.metadata.variation_num}
-          />
-        )}
         {activeTab === 'symbolic_heatmap' && (
           <SymbolicHeatmapPage fileName={meta.file_name} />
-        )}
-        {viewState === 'ready' && data && activeTab === 'mfcc' && (
-          <TimbrePCA data={data} theme={theme} isDark={false} lang={lang} />
         )}
         {viewState === 'ready' && data && activeTab === 'overview' && (
           <OverviewPage data={data} theme={theme} isDark={false} lang={lang} />
