@@ -4865,8 +4865,10 @@ def get_symbolic_features(file_name: str):
 
 
 # ── /api/symbolic_audio/{file_name} ───────────────────────────────────────────
-# Keys whose values can be reliably estimated from existing audio features.
+# All keys whose values can be reliably estimated from audio.
+# Chroma-based (7) + BasicPitch-based (6) = 13 total when BP cache is present.
 AUDIO_ESTIMABLE_KEYS: set[str] = {
+    # Chroma / onset derived
     "pitch_class_entropy",
     "most_common_pc",
     "most_common_pc_prevalence",
@@ -4874,95 +4876,190 @@ AUDIO_ESTIMABLE_KEYS: set[str] = {
     "tonal_clarity",
     "chromatic_density",
     "note_density",
+    # BasicPitch transcription derived
+    "pitch_range",
+    "mean_pitch",
+    "pitch_std",
+    "bass_register_ratio",
+    "high_register_ratio",
+    "interval_class_variety",
 }
 
-def _compute_audio_symbolic(seg_feats: dict, seg_dur: float) -> dict:
-    """
-    Estimate a subset of symbolic features from audio-derived data stored in
-    the existing segment feature dict.
+# ── BasicPitch helpers ────────────────────────────────────────────────────────
 
-    Returns a dict {key: float} for every key in AUDIO_ESTIMABLE_KEYS.
-    Missing source data yields 0.0.
+BP_CACHE_SUFFIX = "_bp_notes.json"   # stored under FEATURE_DIR
+
+
+def _find_audio_file(file_name: str) -> Path | None:
+    """Locate the WAV file for a given file_name (same logic as /api/audio/)."""
+    # Derive folder from file_name prefix (e.g. WAMozart_K265_1 → WAMozart_K265)
+    parts = file_name.split("_")
+    folder_guess = "_".join(parts[:-1]) if parts[-1].isdigit() else file_name
+    candidate = AUDIO_DIR / folder_guess / f"{file_name}.wav"
+    if candidate.exists():
+        return candidate
+    # Fallback: search all sub-directories
+    if AUDIO_DIR.exists():
+        for d in AUDIO_DIR.iterdir():
+            if d.is_dir():
+                p = d / f"{file_name}.wav"
+                if p.exists():
+                    return p
+    return None
+
+
+def _get_bp_notes(file_name: str) -> list[dict] | None:
+    """
+    Return BasicPitch note list for *file_name*, using a JSON cache.
+
+    Cache format: [{"s": start_sec, "e": end_sec, "p": midi_pitch}, …]
+
+    Returns None if audio file is missing or basic-pitch is not installed.
+    First call for a file takes ~20 s; subsequent calls are instant.
+    """
+    cache_path = FEATURE_DIR / f"{file_name}{BP_CACHE_SUFFIX}"
+    if cache_path.exists():
+        with open(cache_path, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    audio_path = _find_audio_file(file_name)
+    if audio_path is None:
+        return None
+
+    try:
+        import warnings as _w
+        _w.filterwarnings("ignore")
+        from basic_pitch.inference import predict as _bp_predict
+        from basic_pitch import ICASSP_2022_MODEL_PATH as _BP_MODEL
+    except ImportError:
+        return None
+
+    try:
+        _, _, note_events = _bp_predict(str(audio_path), _BP_MODEL)
+    except Exception:
+        return None
+
+    notes = [
+        {"s": round(float(e[0]), 4), "e": round(float(e[1]), 4), "p": int(e[2])}
+        for e in note_events
+    ]
+    with open(cache_path, "w", encoding="utf-8") as fh:
+        json.dump(notes, fh)
+    return notes
+
+
+def _compute_bp_features(bp_notes: list[dict], seg_start: float, seg_end: float) -> dict:
+    """
+    Compute 6 pitch features from BasicPitch notes within [seg_start, seg_end).
+    Returns an empty dict if fewer than 2 notes are found.
     """
     import math as _math
 
-    result: dict[str, float] = {}
+    seg_notes = [n for n in bp_notes if seg_start <= n["s"] < seg_end]
+    if len(seg_notes) < 2:
+        return {}
 
-    # ── Chroma-based features ─────────────────────────────────────────
+    pitches = [n["p"] for n in seg_notes]
+    n = len(pitches)
+    mean_p = sum(pitches) / n
+    sorted_p = [n["p"] for n in sorted(seg_notes, key=lambda x: x["s"])]
+    ivs = [abs(sorted_p[i + 1] - sorted_p[i]) for i in range(len(sorted_p) - 1)]
+    ics = {min(iv % 12, 12 - iv % 12) for iv in ivs} if ivs else set()
+
+    return {
+        "pitch_range":            round(float(max(pitches) - min(pitches)), 4),
+        "mean_pitch":             round(mean_p, 4),
+        "pitch_std":              round(_math.sqrt(sum((p - mean_p) ** 2 for p in pitches) / n), 4),
+        "bass_register_ratio":    round(sum(1 for p in pitches if p < 48) / n, 6),
+        "high_register_ratio":    round(sum(1 for p in pitches if p > 72) / n, 6),
+        "interval_class_variety": float(len(ics)),
+    }
+
+
+# ── Chroma / onset helper (unchanged logic, now a standalone function) ────────
+
+def _compute_chroma_audio_symbolic(seg_feats: dict) -> dict:
+    import math as _math
+
+    result: dict[str, float] = {}
     chroma_raw = seg_feats.get("chroma_chromatic", [])
     if chroma_raw and len(chroma_raw) == 12:
         total = sum(chroma_raw) or 1.0
         chroma_n = [v / total for v in chroma_raw]
-
-        # pitch_class_entropy  (same normalisation as MIDI version: /log2(12))
         ent = -sum(v * _math.log2(v) for v in chroma_n if v > 0)
         result["pitch_class_entropy"] = round(ent / _math.log2(12), 6)
-
-        # most_common_pc  — argmax of normalised chroma
         result["most_common_pc"] = float(chroma_n.index(max(chroma_n)))
-
-        # most_common_pc_prevalence — fraction of chroma energy in dominant bin
         result["most_common_pc_prevalence"] = round(max(chroma_n), 6)
-
-        # pitch_variety — chroma bins with >5 % of max energy
         threshold = max(chroma_n) * 0.05
         result["pitch_variety"] = float(sum(1 for v in chroma_n if v > threshold))
-
-        # chromatic_density — fraction of active bins (>1 % of total energy)
-        result["chromatic_density"] = round(
-            sum(1 for v in chroma_n if v > 0.01) / 12.0, 6
-        )
+        result["chromatic_density"] = round(sum(1 for v in chroma_n if v > 0.01) / 12.0, 6)
     else:
         for k in ("pitch_class_entropy", "most_common_pc", "most_common_pc_prevalence",
                   "pitch_variety", "chromatic_density"):
             result[k] = 0.0
 
-    # ── tonal_clarity — Krumhansl-Kessler correlation stored in pitch_contour ──
     pc_feat = seg_feats.get("pitch_contour", {})
     result["tonal_clarity"] = round(float(pc_feat.get("key_correlation", 0.0)), 6)
-
-    # ── note_density — onset detector events per second ──────────────
     result["note_density"] = round(float(seg_feats.get("onset_density", 0.0)), 6)
-
     return result
 
 
 @app.get("/api/symbolic_audio/{file_name}")
 def get_symbolic_audio_features(file_name: str):
     """
-    Return audio-estimated versions of the subset of symbolic features whose
-    values can be reliably derived from the existing per-segment audio feature
-    JSON (chroma, onset_density, pitch_contour.key_correlation).
+    Return audio-estimated symbolic features per segment.
+
+    Two sources are combined:
+      1. Chroma / onset_density → 7 features (always available when audio features exist)
+      2. BasicPitch transcription → 6 pitch features (computed on first call, cached)
+
+    BasicPitch cache: backend/features/{file_name}_bp_notes.json
+    First request for an uncached piece takes ~20 s.
 
     Returns:
         {
           "file_name": str,
-          "audio_estimable_keys": [str],   # canonical list of supported keys
+          "has_bp": bool,                      # whether BP features are included
+          "audio_estimable_keys": [str],
           "segments": [{"label": str, "audio_features": {key: float}}]
         }
     """
     feat_path = FEATURE_DIR / f"{file_name}.json"
     if not feat_path.exists():
-        raise HTTPException(
-            404,
-            f"Feature file not found for '{file_name}'. "
-            "Please extract audio features first.",
-        )
+        raise HTTPException(404, f"Feature file not found for '{file_name}'.")
 
     with open(feat_path, encoding="utf-8") as fh:
         feat_data = json.load(fh)
 
+    # Try to get BasicPitch notes (lazy, cached)
+    bp_notes = _get_bp_notes(file_name)
+    has_bp = bp_notes is not None
+
     segments_out = []
     for seg in feat_data.get("segments", []):
         lbl = seg.get("label", "")
-        if lbl == "C":          # skip Coda (consistent with MIDI endpoint)
+        if lbl == "C":
             continue
-        seg_dur = max(float(seg.get("duration_sec", 1.0)), 1e-6)
-        audio_feats = _compute_audio_symbolic(seg.get("features", {}), seg_dur)
+        seg_start = float(seg.get("start_sec", 0))
+        seg_end   = float(seg.get("end_sec", 0))
+
+        audio_feats = _compute_chroma_audio_symbolic(seg.get("features", {}))
+
+        if has_bp:
+            bp_feats = _compute_bp_features(bp_notes, seg_start, seg_end)
+            audio_feats.update(bp_feats)
+
         segments_out.append({"label": lbl, "audio_features": audio_feats})
 
+    active_keys = AUDIO_ESTIMABLE_KEYS if has_bp else (
+        AUDIO_ESTIMABLE_KEYS - {"pitch_range", "mean_pitch", "pitch_std",
+                                 "bass_register_ratio", "high_register_ratio",
+                                 "interval_class_variety"}
+    )
+
     return {
-        "file_name":           file_name,
-        "audio_estimable_keys": sorted(AUDIO_ESTIMABLE_KEYS),
-        "segments":            segments_out,
+        "file_name":            file_name,
+        "has_bp":               has_bp,
+        "audio_estimable_keys": sorted(active_keys),
+        "segments":             segments_out,
     }

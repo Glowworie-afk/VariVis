@@ -40,8 +40,12 @@ interface AudioSymbolicResponse {
 }
 interface Props { fileName: string }
 
-// Keys whose audio estimates are reliable enough to display
+// Keys whose audio estimates are reliable enough to display.
+// The 6 BasicPitch-derived keys are included here; the backend returns them
+// only when a BP cache exists (has_bp=true). The frontend simply skips the
+// curve when the value is absent/zero for all segments.
 const AUDIO_ESTIMABLE_KEYS = new Set([
+  // Chroma / onset derived (always available)
   'pitch_class_entropy',
   'most_common_pc',
   'most_common_pc_prevalence',
@@ -49,6 +53,13 @@ const AUDIO_ESTIMABLE_KEYS = new Set([
   'tonal_clarity',
   'chromatic_density',
   'note_density',
+  // BasicPitch transcription derived (available after first lazy computation)
+  'pitch_range',
+  'mean_pitch',
+  'pitch_std',
+  'bass_register_ratio',
+  'high_register_ratio',
+  'interval_class_variety',
 ])
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -461,10 +472,13 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
     const ci = derived.defs.findIndex(d => d.key === hovCol)
     if (ci < 0) return null
     const def = derived.defs[ci]
-    // Include audio values only for estimable features
-    const audioValues = (audioByLabel && AUDIO_ESTIMABLE_KEYS.has(def.key))
-      ? rowOrder.map(ri => audioByLabel[derived.labels[ri]]?.[def.key] ?? 0)
-      : undefined
+    // Include audio values only for estimable features that have non-zero data
+    let audioValues: number[] | undefined
+    if (audioByLabel && AUDIO_ESTIMABLE_KEYS.has(def.key)) {
+      const vals = rowOrder.map(ri => audioByLabel[derived.labels[ri]]?.[def.key] ?? 0)
+      // Only show curve if at least one value is non-zero (BP cache may not exist yet)
+      if (vals.some(v => v !== 0)) audioValues = vals
+    }
     return {
       def,
       rawValues:  rowOrder.map(ri => derived.rawMat[ri][ci]),
