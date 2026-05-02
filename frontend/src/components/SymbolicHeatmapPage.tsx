@@ -30,7 +30,26 @@ interface SymbolicResponse {
   matched: boolean; file_name: string; midi_name: string
   segments: SegmentData[]; feature_defs: FeatureDef[]
 }
+interface AudioSegmentData {
+  label: string; audio_features: Record<string, number>
+}
+interface AudioSymbolicResponse {
+  file_name: string
+  audio_estimable_keys: string[]
+  segments: AudioSegmentData[]
+}
 interface Props { fileName: string }
+
+// Keys whose audio estimates are reliable enough to display
+const AUDIO_ESTIMABLE_KEYS = new Set([
+  'pitch_class_entropy',
+  'most_common_pc',
+  'most_common_pc_prevalence',
+  'pitch_variety',
+  'tonal_clarity',
+  'chromatic_density',
+  'note_density',
+])
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -163,14 +182,17 @@ function DescPanel({ def }: { def: FeatureDef }) {
 // ── FeatureDistChart ───────────────────────────────────────────────────────
 
 interface ChartProps {
-  def:        FeatureDef
-  rawValues:  number[]
-  rowLabels:  string[]
-  hoveredIdx: number | null
-  svgWidth:   number
+  def:         FeatureDef
+  rawValues:   number[]
+  rowLabels:   string[]
+  hoveredIdx:  number | null
+  svgWidth:    number
+  audioValues?: number[]   // audio-estimated values (same length as rawValues), or undefined
 }
 
-function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: ChartProps) {
+const AUDIO_ORANGE = '#f97316'
+
+function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth, audioValues }: ChartProps) {
   const { cat, chart_type: ct } = def
   const cc = CAT_COLORS[cat]
   const n  = rawValues.length
@@ -179,18 +201,23 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: C
   const std    = Math.sqrt(rawValues.reduce((s, v) => s + (v - mean) ** 2, 0) / n)
   const median = [...rawValues].sort((a, b) => a - b)[Math.floor(n / 2)]
 
+  // Y range includes both MIDI and audio values so the curve fits in the same scale
   const [yMin, yMax] = (() => {
     if (ct === 'signed') {
-      const mx = Math.max(Math.abs(Math.min(...rawValues)), Math.abs(Math.max(...rawValues)), 0.05)
+      const allVals = audioValues ? [...rawValues, ...audioValues] : rawValues
+      const mx = Math.max(Math.abs(Math.min(...allVals)), Math.abs(Math.max(...allVals)), 0.05)
       return [-mx * 1.2, mx * 1.2]
     }
     if (ct === 'ratio' || ct === 'entropy') return [0, 1]
-    return [0, Math.max(...rawValues) * 1.18 || 1]
+    const allVals = audioValues ? [...rawValues, ...audioValues] : rawValues
+    return [0, Math.max(...allVals) * 1.18 || 1]
   })()
 
-  const W = svgWidth, H = 118
-  const pL = 40, pR = 10, pT = 14, pB = 20
-  const cW = W - pL - pR, cH = H - pT - pB
+  const hasAudio = audioValues && audioValues.length === n
+  const legendH  = hasAudio ? 13 : 0
+  const W = svgWidth, H = 118 + legendH
+  const pL = 40, pR = hasAudio ? 56 : 10, pT = 14, pB = 20
+  const cW = W - pL - pR, cH = H - pT - pB - legendH
   const xS = cW / n
   const bW = Math.max(8, xS * 0.7)
 
@@ -208,6 +235,13 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: C
     : ct === 'entropy'  ? { y: yS(mean),   color: '#14b8a6', txt: `均值 ${mean.toFixed(2)}` }
     : ct === 'continuous' ? { y: yS(mean), color: cc,        txt: `均值 ${mean < 1 ? mean.toFixed(2) : mean.toFixed(1)}` }
     : null
+
+  // Build polyline points for audio curve
+  const audioPolyline = hasAudio
+    ? audioValues!.map((v, i) => `${xC(i).toFixed(1)},${yS(v).toFixed(1)}`).join(' ')
+    : ''
+
+  const fmt = (v: number) => ct === 'count' ? Math.round(v).toString() : Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1)
 
   return (
     <svg width={W} height={H} style={{ display: 'block' }}>
@@ -230,19 +264,16 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: C
         <text x={pL+cW+3} y={refLine.y+4} fontSize={8} fill={refLine.color}>{refLine.txt}</text>
       </>}
 
-      {/* Bars */}
+      {/* Bars (MIDI values) */}
       {rawValues.map((val, i) => {
         const hov  = i === hoveredIdx
         const fill = hov ? cc : cc + '55'
         const x    = xC(i)
-
         const top  = ct === 'signed' ? Math.min(z0, yS(val)) : yS(val)
         const bot  = ct === 'signed' ? Math.max(z0, yS(val)) : pT + cH
         const barH = Math.max(2, bot - top)
         const barFill = ct === 'signed' && val < 0 ? cc + '88' : fill
         const labelV = (ct === 'signed' && val < 0) ? bot + 11 : top - 5
-        const fmt = (v: number) => ct === 'count' ? Math.round(v).toString() : Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1)
-
         return (
           <g key={i}>
             <rect x={x - bW/2} y={top} width={bW} height={barH} fill={barFill} rx={2} />
@@ -250,6 +281,42 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: C
           </g>
         )
       })}
+
+      {/* Audio polyline (drawn on top of bars) */}
+      {hasAudio && <>
+        <polyline
+          points={audioPolyline}
+          fill="none"
+          stroke={AUDIO_ORANGE}
+          strokeWidth={1.8}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {audioValues!.map((v, i) => {
+          const hov = i === hoveredIdx
+          return (
+            <g key={i}>
+              <circle cx={xC(i)} cy={yS(v)} r={hov ? 4 : 2.8}
+                fill={AUDIO_ORANGE} stroke="#fff" strokeWidth={1} />
+              {hov && (
+                <text x={xC(i)} y={yS(v) - 6} textAnchor="middle"
+                  fontSize={9} fill={AUDIO_ORANGE} fontWeight={700}>
+                  {fmt(v)}
+                </text>
+              )}
+            </g>
+          )
+        })}
+        {/* Legend (top-right inside chart area) */}
+        <g transform={`translate(${pL + cW + 4}, ${pT + 2})`}>
+          <rect x={0} y={0} width={50} height={22} rx={3} fill="white" fillOpacity={0.9} stroke="#e2e8f0" strokeWidth={0.8} />
+          <rect x={4} y={6} width={12} height={5} fill={cc + '66'} rx={1} />
+          <text x={19} y={11} fontSize={7.5} fill="#64748b">MIDI</text>
+          <line x1={4} y1={17} x2={16} y2={17} stroke={AUDIO_ORANGE} strokeWidth={1.8} />
+          <circle cx={10} cy={17} r={2} fill={AUDIO_ORANGE} />
+          <text x={19} y={20} fontSize={7.5} fill="#64748b">Audio</text>
+        </g>
+      </>}
 
       {/* Y axis + ticks */}
       <line x1={pL} y1={pT} x2={pL} y2={pT+cH} stroke="#e2e8f0" />
@@ -264,7 +331,7 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: C
 
       {/* X labels */}
       {rowLabels.map((lbl, i) => (
-        <text key={i} x={xC(i)} y={H-4} textAnchor="middle" fontSize={9}
+        <text key={i} x={xC(i)} y={pT + cH + 16} textAnchor="middle" fontSize={9}
           fill={i === hoveredIdx ? '#1e293b' : '#94a3b8'}
           fontWeight={i === hoveredIdx ? 700 : 400}>
           {lbl}
@@ -296,6 +363,7 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
   const [data,      setData]      = useState<SymbolicResponse | null>(null)
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState<string | null>(null)
+  const [audioData, setAudioData] = useState<AudioSymbolicResponse | null>(null)
   const [sortCol,   setSortCol]   = useState<string | null>(null)
   const [hovRow,    setHovRow]    = useState<number | null>(null)
   const [hovCol,    setHovCol]    = useState<string | null>(null)
@@ -325,13 +393,21 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
     _contRo.current = ro
   }, [])
 
-  // fetch
+  // fetch MIDI symbolic + audio symbolic in parallel
   useEffect(() => {
     if (!fileName) return
-    setLoading(true); setError(null); setData(null)
-    fetch(`/api/symbolic/${fileName}`)
+    setLoading(true); setError(null); setData(null); setAudioData(null)
+    const midiP = fetch(`/api/symbolic/${fileName}`)
       .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail ?? r.statusText) }))
-      .then((d: SymbolicResponse) => { setData(d); setLoading(false) })
+    const audioP = fetch(`/api/symbolic_audio/${fileName}`)
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null)
+    Promise.all([midiP, audioP])
+      .then(([midi, audio]) => {
+        setData(midi as SymbolicResponse)
+        if (audio) setAudioData(audio as AudioSymbolicResponse)
+        setLoading(false)
+      })
       .catch(e => { setError(e.message); setLoading(false) })
   }, [fileName])
 
@@ -369,6 +445,14 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
     return ci < 0 ? base : [...base].sort((a,b) => derived.deltaMat[a][ci] - derived.deltaMat[b][ci])
   }, [derived, sortCol])
 
+  // Build audio lookup: label → feature map
+  const audioByLabel = useMemo(() => {
+    if (!audioData) return null
+    const map: Record<string, Record<string, number>> = {}
+    for (const seg of audioData.segments) map[seg.label] = seg.audio_features
+    return map
+  }, [audioData])
+
   const tooltip = useMemo(() => {
     if (!derived || !hovCol) return null
     // only show tooltip if hovered column is currently visible
@@ -376,13 +460,19 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
     if (!visibleKeys.includes(hovCol)) return null
     const ci = derived.defs.findIndex(d => d.key === hovCol)
     if (ci < 0) return null
+    const def = derived.defs[ci]
+    // Include audio values only for estimable features
+    const audioValues = (audioByLabel && AUDIO_ESTIMABLE_KEYS.has(def.key))
+      ? rowOrder.map(ri => audioByLabel[derived.labels[ri]]?.[def.key] ?? 0)
+      : undefined
     return {
-      def:        derived.defs[ci],
+      def,
       rawValues:  rowOrder.map(ri => derived.rawMat[ri][ci]),
       rowLabels:  rowOrder.map(ri => derived.labels[ri]),
       hoveredIdx: hovRow !== null ? rowOrder.indexOf(hovRow) : null,
+      audioValues,
     }
-  }, [derived, hovCol, rowOrder, hovRow, catFilter])
+  }, [derived, hovCol, rowOrder, hovRow, catFilter, audioByLabel])
 
   // ── Render ────────────────────────────────────────────────────────
   if (!fileName) return <div style={{padding:40,color:'#94a3b8'}}>请先选择曲目。</div>
@@ -478,6 +568,7 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
                     rowLabels={tooltip.rowLabels}
                     hoveredIdx={tooltip.hoveredIdx}
                     svgWidth={Math.max(100, chartPanelW - 20)}
+                    audioValues={tooltip.audioValues}
                   />
                 )}
               </div>

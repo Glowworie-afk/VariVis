@@ -4862,3 +4862,107 @@ def get_symbolic_features(file_name: str):
             for k, zh, en, cat, ct in SYMBOLIC_FEATURE_DEFS
         ],
     }
+
+
+# ── /api/symbolic_audio/{file_name} ───────────────────────────────────────────
+# Keys whose values can be reliably estimated from existing audio features.
+AUDIO_ESTIMABLE_KEYS: set[str] = {
+    "pitch_class_entropy",
+    "most_common_pc",
+    "most_common_pc_prevalence",
+    "pitch_variety",
+    "tonal_clarity",
+    "chromatic_density",
+    "note_density",
+}
+
+def _compute_audio_symbolic(seg_feats: dict, seg_dur: float) -> dict:
+    """
+    Estimate a subset of symbolic features from audio-derived data stored in
+    the existing segment feature dict.
+
+    Returns a dict {key: float} for every key in AUDIO_ESTIMABLE_KEYS.
+    Missing source data yields 0.0.
+    """
+    import math as _math
+
+    result: dict[str, float] = {}
+
+    # ── Chroma-based features ─────────────────────────────────────────
+    chroma_raw = seg_feats.get("chroma_chromatic", [])
+    if chroma_raw and len(chroma_raw) == 12:
+        total = sum(chroma_raw) or 1.0
+        chroma_n = [v / total for v in chroma_raw]
+
+        # pitch_class_entropy  (same normalisation as MIDI version: /log2(12))
+        ent = -sum(v * _math.log2(v) for v in chroma_n if v > 0)
+        result["pitch_class_entropy"] = round(ent / _math.log2(12), 6)
+
+        # most_common_pc  — argmax of normalised chroma
+        result["most_common_pc"] = float(chroma_n.index(max(chroma_n)))
+
+        # most_common_pc_prevalence — fraction of chroma energy in dominant bin
+        result["most_common_pc_prevalence"] = round(max(chroma_n), 6)
+
+        # pitch_variety — chroma bins with >5 % of max energy
+        threshold = max(chroma_n) * 0.05
+        result["pitch_variety"] = float(sum(1 for v in chroma_n if v > threshold))
+
+        # chromatic_density — fraction of active bins (>1 % of total energy)
+        result["chromatic_density"] = round(
+            sum(1 for v in chroma_n if v > 0.01) / 12.0, 6
+        )
+    else:
+        for k in ("pitch_class_entropy", "most_common_pc", "most_common_pc_prevalence",
+                  "pitch_variety", "chromatic_density"):
+            result[k] = 0.0
+
+    # ── tonal_clarity — Krumhansl-Kessler correlation stored in pitch_contour ──
+    pc_feat = seg_feats.get("pitch_contour", {})
+    result["tonal_clarity"] = round(float(pc_feat.get("key_correlation", 0.0)), 6)
+
+    # ── note_density — onset detector events per second ──────────────
+    result["note_density"] = round(float(seg_feats.get("onset_density", 0.0)), 6)
+
+    return result
+
+
+@app.get("/api/symbolic_audio/{file_name}")
+def get_symbolic_audio_features(file_name: str):
+    """
+    Return audio-estimated versions of the subset of symbolic features whose
+    values can be reliably derived from the existing per-segment audio feature
+    JSON (chroma, onset_density, pitch_contour.key_correlation).
+
+    Returns:
+        {
+          "file_name": str,
+          "audio_estimable_keys": [str],   # canonical list of supported keys
+          "segments": [{"label": str, "audio_features": {key: float}}]
+        }
+    """
+    feat_path = FEATURE_DIR / f"{file_name}.json"
+    if not feat_path.exists():
+        raise HTTPException(
+            404,
+            f"Feature file not found for '{file_name}'. "
+            "Please extract audio features first.",
+        )
+
+    with open(feat_path, encoding="utf-8") as fh:
+        feat_data = json.load(fh)
+
+    segments_out = []
+    for seg in feat_data.get("segments", []):
+        lbl = seg.get("label", "")
+        if lbl == "C":          # skip Coda (consistent with MIDI endpoint)
+            continue
+        seg_dur = max(float(seg.get("duration_sec", 1.0)), 1e-6)
+        audio_feats = _compute_audio_symbolic(seg.get("features", {}), seg_dur)
+        segments_out.append({"label": lbl, "audio_features": audio_feats})
+
+    return {
+        "file_name":           file_name,
+        "audio_estimable_keys": sorted(AUDIO_ESTIMABLE_KEYS),
+        "segments":            segments_out,
+    }
