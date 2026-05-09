@@ -58,9 +58,14 @@ interface StatProps {
 function HarmonicStatsChart({ sections, activeSection, chordData, theme, lang }: StatProps) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en
 
+  const [sortBy,    setSortBy]    = useState<'default' | 'T' | 'S' | 'D' | 'O'>('default')
+  const [collapsed, setCollapsed] = useState(false)
+
+  const isAllMode = !activeSection
+
   // When a section pill is active → show only that section's bar.
   // When "All" is selected → show all Theme + Variation sections.
-  const rows = activeSection
+  const baseRows = activeSection
     ? [{ label: activeSection.label, start: activeSection.start_idx, end: activeSection.end_idx }]
     : sections
         .filter(s => {
@@ -68,6 +73,23 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme, lang }:
           return low.startsWith('tema') || low.startsWith('theme') || low.startsWith('var')
         })
         .map(s => ({ label: s.label, start: s.start_idx, end: s.end_idx }))
+
+  // Pre-compute aggregates for sorting
+  const rowsWithAgg = baseRows.map(row => {
+    const ms = chordData.filter(m => m.seq >= row.start && m.seq < row.end)
+    const tot = ms.length || 1
+    const agg = { T: 0, S: 0, D: 0, O: 0 }
+    ms.forEach(m => { agg.T += m.T; agg.S += m.S; agg.D += m.D; agg.O += m.O })
+    ;(Object.keys(agg) as (keyof typeof agg)[]).forEach(k => { agg[k] /= tot })
+    // Normalise to exactly 1.0 so bars always fill 100% (counters float rounding)
+    const aggSum = agg.T + agg.S + agg.D + agg.O || 1
+    ;(Object.keys(agg) as (keyof typeof agg)[]).forEach(k => { agg[k] /= aggSum })
+    return { ...row, agg, empty: ms.length === 0 }
+  })
+
+  const rows = isAllMode && sortBy !== 'default'
+    ? [...rowsWithAgg].sort((a, b) => b.agg[sortBy] - a.agg[sortBy])
+    : rowsWithAgg
 
   return (
     <div style={{
@@ -77,67 +99,105 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme, lang }:
       padding:      '8px 10px 6px',
       marginBottom: 8,
     }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: theme.labelColor, marginBottom: 6 }}>
-        {t('和声功能分布', 'Harmonic Function Distribution')}
+      {/* Title row with collapse toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsed ? 0 : 6 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: theme.labelColor }}>
+          {t('和声功能分布', 'Harmonic Function Distribution')}
+        </div>
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 12, color: theme.labelSecondaryColor,
+            padding: '0 2px', lineHeight: 1, opacity: 0.7,
+          }}
+          title={collapsed ? t('展开', 'Expand') : t('折叠', 'Collapse')}
+        >
+          {collapsed ? '▶' : '▼'}
+        </button>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-        {(['T', 'S', 'D', 'O'] as const).map(fn => (
-          <span key={fn} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9 }}>
-            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: FN_SOLID[fn] }} />
-            <span style={{ color: theme.labelSecondaryColor }}>
-              {fn} –{' '}
-              {fn === 'T' ? t('主功能', 'Tonic') :
-               fn === 'S' ? t('下属功能', 'Subdominant') :
-               fn === 'D' ? t('属功能', 'Dominant') :
-                            t('其他', 'Other')}
-            </span>
-          </span>
-        ))}
-      </div>
-
-      {/* Per-section bars */}
-      {rows.map(row => {
-        const ms = chordData.filter(m => m.seq >= row.start && m.seq < row.end)
-        if (ms.length === 0) return null
-        const tot = ms.length
-        const agg = { T: 0, S: 0, D: 0, O: 0 }
-        ms.forEach(m => { agg.T += m.T; agg.S += m.S; agg.D += m.D; agg.O += m.O })
-        ;(Object.keys(agg) as (keyof typeof agg)[]).forEach(k => { agg[k] /= tot })
-
-        const label = row.label === 'Tema' ? t('主题', 'Theme') : row.label
-
-        return (
-          <div key={row.label} style={{ marginBottom: 5 }}>
-            <div style={{ fontSize: 9, color: theme.labelColor, marginBottom: 2, fontWeight: 600 }}>{label}</div>
-            <div style={{
-              display: 'flex', height: 15, borderRadius: 4,
-              overflow: 'hidden', border: `1px solid ${theme.borderColor}`,
-            }}>
-              {(['T', 'S', 'D', 'O'] as const).map(fn => {
-                const pct = agg[fn]
-                if (pct < 0.005) return null
-                return (
-                  <div
-                    key={fn}
-                    title={`${fn}: ${(pct * 100).toFixed(1)}%`}
-                    style={{
-                      width:      `${pct * 100}%`,
-                      background: FN_SOLID[fn],
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 7, color: '#fff', fontWeight: 700,
-                      overflow: 'hidden', transition: 'width 0.3s',
-                    }}
-                  >
-                    {pct > 0.12 ? `${(pct * 100).toFixed(0)}%` : ''}
-                  </div>
-                )
-              })}
-            </div>
+      {!collapsed && (
+        <>
+          {/* Legend — clickable sort buttons in All mode */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {(['T', 'S', 'D', 'O'] as const).map(fn => {
+              const isActive = isAllMode && sortBy === fn
+              const color = FN_SOLID[fn]
+              const label = fn === 'T' ? t('主功能', 'Tonic') :
+                            fn === 'S' ? t('下属功能', 'Subdominant') :
+                            fn === 'D' ? t('属功能', 'Dominant') :
+                                         t('其他', 'Other')
+              return (
+                <button
+                  key={fn}
+                  onClick={() => isAllMode && setSortBy(s => s === fn ? 'default' : fn)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    fontSize: 9, fontWeight: isActive ? 700 : 400,
+                    padding: '2px 7px 2px 5px', borderRadius: 4,
+                    cursor: isAllMode ? 'pointer' : 'default',
+                    border: `1px solid ${isActive ? color : theme.borderColor}`,
+                    background: isActive ? `${color}22` : 'transparent',
+                    color: isActive ? color : theme.labelSecondaryColor,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-block', width: 10, height: 10,
+                    borderRadius: 2, background: color, flexShrink: 0,
+                  }} />
+                  {fn} – {label}
+                  {isActive && <span style={{ marginLeft: 2, opacity: 0.7 }}>↓</span>}
+                </button>
+              )
+            })}
           </div>
-        )
-      })}
+
+          {/* Per-section bars */}
+          {rows.map(row => {
+            if (row.empty) return null
+            const { agg } = row
+            const label = row.label === 'Tema' ? t('主题', 'Theme') : row.label
+
+            // Put the active-sort segment first in the bar
+            const fnOrder = (['T', 'S', 'D', 'O'] as const)
+            const orderedFns = sortBy !== 'default'
+              ? [sortBy, ...fnOrder.filter(f => f !== sortBy)] as const
+              : fnOrder
+
+            return (
+              <div key={row.label} style={{ marginBottom: 5 }}>
+                <div style={{ fontSize: 9, color: theme.labelColor, marginBottom: 2, fontWeight: 600 }}>{label}</div>
+                <div style={{
+                  display: 'flex', height: 15, borderRadius: 4,
+                  overflow: 'hidden', border: `1px solid ${theme.borderColor}`,
+                }}>
+                  {orderedFns.map(fn => {
+                    const pct = agg[fn]
+                    if (pct < 0.005) return null
+                    return (
+                      <div
+                        key={fn}
+                        title={`${fn}: ${(pct * 100).toFixed(1)}%`}
+                        style={{
+                          width:      `${pct * 100}%`,
+                          background: FN_SOLID[fn],
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 7, color: '#fff', fontWeight: 700,
+                          overflow: 'hidden', transition: 'width 0.3s',
+                        }}
+                      >
+                        {pct > 0.12 ? `${(pct * 100).toFixed(0)}%` : ''}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </>
+      )}
     </div>
   )
 }
@@ -388,13 +448,6 @@ export function MusicVisPage({ theme, lang, xmlFile }: Props) {
 
       {/* ── Top bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: theme.labelColor }}>
-           {t('和声指纹', 'Harmonic Fingerprint')}
-        </span>
-        <span style={{ fontSize: 9, color: theme.labelSecondaryColor, fontStyle: 'italic' }}>
-          Miller et al., CGF 2022
-        </span>
-
         <span style={{ fontSize: 10, color: theme.labelSecondaryColor, marginLeft: 'auto', fontStyle: 'italic' }}>
           {xmlFile}
         </span>

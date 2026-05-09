@@ -15,10 +15,11 @@ import type { getTheme } from '../theme'
 import type { Lang } from '../App'
 
 interface Props {
-  data:   PieceData
-  theme:  ReturnType<typeof getTheme>
-  isDark: boolean
-  lang:   Lang
+  data:        PieceData
+  theme:       ReturnType<typeof getTheme>
+  isDark:      boolean
+  lang:        Lang
+  selectedSeg?: number | null
 }
 
 // ── Layout ───────────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ interface TooltipInfo {
 
 // ── Component ────────────────────────────────────────────────────────
 
-export function RhythmBubblePage({ data, theme, isDark, lang }: Props) {
+export function RhythmBubblePage({ data, theme, isDark, lang, selectedSeg }: Props) {
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null)
 
   const segments    = data.segments
@@ -236,8 +237,18 @@ export function RhythmBubblePage({ data, theme, isDark, lang }: Props) {
             ? null   // per-bubble: computed below
             : densityToOpacity(density)   // fallback: uniform per row using segment avg
 
+          const rowY0 = PAD_TOP + rowIdx * (ROW_H + ROW_GAP)
+          const isRowSelected = selectedSeg === rowIdx
           return (
             <g key={seg.label}>
+              {isRowSelected && (
+                <rect
+                  x={PAD_H} y={rowY0 - 4}
+                  width={LABEL_W + TIMELINE_W + RIGHT_W + 8} height={ROW_H + 8}
+                  rx={6} fill="#4361EE" fillOpacity={0.08}
+                  stroke="#4361EE" strokeWidth={1} strokeOpacity={0.35}
+                />
+              )}
 
               {/* Center axis */}
               <line

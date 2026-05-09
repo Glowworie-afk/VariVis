@@ -70,15 +70,29 @@ const pct = (v: number) => `${(v * 100).toFixed(1)}%`
 // ── Single Ring Card ─────────────────────────────────────────────────
 
 interface CardProps {
-  segment:  Segment
-  theme:    ThemeTokens
-  isDark:   boolean
+  segment:      Segment
+  theme:        ThemeTokens
+  isDark:       boolean
+  /** If set, only the top-N sectors by energy are shown in colour; others are greyed out */
+  highlightTop?: number
+  /** SVG display size in px (default 170) */
+  size?:         number
 }
 
-function RingCard({ segment, theme, isDark }: CardProps) {
+const GRAY_FILL   = 'rgba(150,150,165,0.30)'
+const GRAY_STROKE = 'rgba(150,150,165,0.18)'
+
+export function RingCard({ segment, theme, isDark, highlightTop, size = 170 }: CardProps) {
   const { features, label } = segment
   const chroma = features.chroma_cof   // 12 values, COF order
   const pc     = features.pitch_contour
+
+  // Indices of the top-N sectors (sorted descending by value)
+  const topSet = useMemo<Set<number>>(() => {
+    if (!highlightTop) return new Set(chroma.map((_, i) => i))
+    const sorted = [...chroma.map((v, i) => ({ v, i }))].sort((a, b) => b.v - a.v)
+    return new Set(sorted.slice(0, highlightTop).map(x => x.i))
+  }, [chroma, highlightTop])
 
   const sectors = useMemo(() =>
     chroma.map((v, i) => ({ ...buildSector(v, i), value: v, name: COF_NAMES[i], color: theme.chromaColors[i] }))
@@ -119,8 +133,8 @@ function RingCard({ segment, theme, isDark }: CardProps) {
 
       {/* SVG ring — all contents in a centered <g> so D3 arcs render correctly */}
       <svg
-        width={170}
-        height={170}
+        width={size}
+        height={size}
         viewBox={`0 0 ${VBOX} ${VBOX}`}
         style={{ display: 'block', overflow: 'visible' }}
         aria-label={`Chroma ring for ${label}`}
@@ -145,24 +159,28 @@ function RingCard({ segment, theme, isDark }: CardProps) {
           />
 
           {/* Arc sectors */}
-          {sectors.map((s, i) => (
-            <path
-              key={i}
-              d={s.d ?? ''}
-              fill={s.color}
-              fillOpacity={theme.chromaFillOpacity}
-              stroke={theme.chromaStroke}
-              strokeWidth={theme.chromaStrokeWidth}
-            >
-              <title>{s.name}: {pct(s.value)}</title>
-            </path>
-          ))}
+          {sectors.map((s, i) => {
+            const isTop = topSet.has(i)
+            return (
+              <path
+                key={i}
+                d={s.d ?? ''}
+                fill={isTop ? s.color : GRAY_FILL}
+                fillOpacity={isTop ? theme.chromaFillOpacity : 1}
+                stroke={isTop ? theme.chromaStroke : GRAY_STROKE}
+                strokeWidth={theme.chromaStrokeWidth}
+              >
+                <title>{s.name}: {pct(s.value)}{!isTop ? ' (dimmed)' : ''}</title>
+              </path>
+            )
+          })}
 
           {/* COF note name labels around the outer edge */}
           {sectors.map((s, i) => {
+            const isTop  = topSet.has(i)
             const isEb   = COF_NAMES[i] === 'Eb'
             const isEnat = COF_NAMES[i] === 'E'
-            const isKeyNote = pc && (
+            const isKeyNote = isTop && pc && (
               (pc.is_major  && COF_NAMES[i] === 'E')  ||
               (!pc.is_major && COF_NAMES[i] === 'Eb')
             )
@@ -174,7 +192,13 @@ function RingCard({ segment, theme, isDark }: CardProps) {
                 dominantBaseline="central"
                 fontSize={isEb || isEnat ? 11 : 10}
                 fontWeight={isKeyNote ? 800 : 500}
-                fill={isKeyNote ? s.color : (isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)')}
+                fill={
+                  isKeyNote
+                    ? s.color
+                    : isTop
+                      ? (isDark ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.60)')
+                      : (isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.20)')
+                }
                 style={{ userSelect: 'none' }}
               >
                 {s.name}
@@ -182,10 +206,11 @@ function RingCard({ segment, theme, isDark }: CardProps) {
             )
           })}
 
-          {/* Percentage value labels — shown for all sectors */}
+          {/* Percentage value labels — only shown for top sectors */}
           {sectors.map((s, i) => {
-            const prominent = s.value >= 0.05        // ≥5%: colored, full opacity
-            const visible   = s.value >= 0.02        // 2–5%: gray, dimmed; <2%: hidden
+            const isTop     = topSet.has(i)
+            const prominent = s.value >= 0.05
+            const visible   = isTop ? s.value >= 0.02 : false
             if (!visible) return null
             return (
               <text
@@ -195,11 +220,7 @@ function RingCard({ segment, theme, isDark }: CardProps) {
                 dominantBaseline="central"
                 fontSize={prominent ? 9.5 : 8.5}
                 fontWeight={prominent ? 700 : 400}
-                fill={
-                  prominent
-                    ? s.color
-                    : (isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)')
-                }
+                fill={s.color}
                 style={{ userSelect: 'none' }}
               >
                 {pct(s.value)}
@@ -304,13 +325,14 @@ function ChromaLegend({ theme, isDark }: { theme: ThemeTokens; isDark: boolean }
 // ── Main page ─────────────────────────────────────────────────────────
 
 interface Props {
-  data:   PieceData
-  theme:  ThemeTokens
-  isDark: boolean
-  lang:   Lang
+  data:        PieceData
+  theme:       ThemeTokens
+  isDark:      boolean
+  lang:        Lang
+  selectedSeg?: number | null
 }
 
-export function ChromaRingPage({ data, theme, isDark }: Props) {
+export function ChromaRingPage({ data, theme, isDark, selectedSeg }: Props) {
   const segments = data.segments
 
   return (
@@ -326,12 +348,17 @@ export function ChromaRingPage({ data, theme, isDark }: Props) {
         gap:                   12,
       }}>
         {segments.map(seg => (
-          <RingCard
+          <div
             key={seg.label}
-            segment={seg}
-            theme={theme}
-            isDark={isDark}
-          />
+            style={{
+              borderRadius: 12,
+              boxShadow: selectedSeg === seg.index
+                ? '0 0 0 3px #4361EE, 0 0 14px rgba(67,97,238,0.2)'
+                : undefined,
+            }}
+          >
+            <RingCard segment={seg} theme={theme} isDark={isDark} />
+          </div>
         ))}
       </div>
     </div>

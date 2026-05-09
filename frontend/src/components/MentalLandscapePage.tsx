@@ -2,12 +2,13 @@
 // 心理图景 + 心理语义注释 — Mental Landscape + Semantic Annotation
 //
 // Visual dimensions (per glyph):
-//   Shape       → pitch-class radar: 12 vertices (chromatic order), vertex radius = pitch-class energy
-//   Stroke W    → chroma consonance (how sharply the ring peaks)
-//   Ticks       → onset density  (arousal proxy, radial tick marks outside ring)
-//   Size/Opacity→ RMS energy     (power proxy, scales the whole ring)
-//   Corona      → spectral centroid brightness (timbre, outer glow)
-//   Y position  → avg midi_relative (melodic register)
+//   Shape         → pitch-class radar: 12 vertices (chromatic order), vertex radius = pitch-class energy
+//   Stroke        → fixed thin border
+//   Opacity       → fixed per mode (major=0.70, minor=0.55) — no channel wasted on rhythm
+//   Size          → RMS energy (loudness, single channel — no dual encoding)
+//   Blur Halo     → spectral centroid brightness (tier 0=Piercing strong glow, 1=Bright soft glow, 2-4=none)
+//   Concentric Rings → onset density (rhythm: 1 ring=sparse, 4 rings=dense)
+//   Y position    → avg midi_relative (melodic register)
 //
 // Semantic annotation (per variation):
 //   Arousal  = normOnset × 0.55 + normRms × 0.45
@@ -22,16 +23,18 @@ import type { ThemeTokens } from '../theme'
 import type { Lang } from '../App'
 
 interface Props {
-  data:   PieceData
-  theme:  ThemeTokens
-  isDark: boolean
-  lang:   Lang
+  data:        PieceData
+  theme:       ThemeTokens
+  isDark:      boolean
+  lang:        Lang
+  selectedSeg?: number | null
+  onSegSelect?: (i: number) => void
 }
 
 // ── Russell circumplex constants ──────────────────────────────────────
-const RC_W    = 200   // plot area width  (px)
-const RC_H    = 180   // plot area height (px)
-const RC_PAD  = 28    // axis label padding
+const RC_W    = 380   // plot area width  (px)
+const RC_H    = 320   // plot area height (px)
+const RC_PAD  = 40    // axis label padding
 const RC_PW   = RC_W - RC_PAD * 2   // inner plot width
 const RC_PH   = RC_H - RC_PAD * 2   // inner plot height
 
@@ -39,7 +42,7 @@ const RC_PH   = RC_H - RC_PAD * 2   // inner plot height
 
 const CELL_W     = 90
 const GLYPH_R    = 30
-const CORONA_MAX = 18
+
 const SVG_H      = 400        // increased for emoji+semantic rows
 const PAD_X      = 40
 const PAD_TOP    = 70
@@ -65,14 +68,14 @@ interface HevnerEntry {
 }
 
 const HEVNER: HevnerEntry[] = [
-  { group: 1, label: 'Vigorous',    labelZh: '雄健',   emoji: '💪', gems: 'Power',             gemsZh: '力量感',  hue: 20  },
-  { group: 2, label: 'Triumphant',  labelZh: '激昂',   emoji: '⚡', gems: 'Power',             gemsZh: '力量感',  hue: 40  },
-  { group: 3, label: 'Agitated',    labelZh: '激动',   emoji: '🌪️', gems: 'Tension',           gemsZh: '紧张',   hue: 0   },
-  { group: 4, label: 'Sprightly',   labelZh: '活泼',   emoji: '🌟', gems: 'Joyful Activation', gemsZh: '欢快激活', hue: 55  },
-  { group: 5, label: 'Joyful',      labelZh: '欢快',   emoji: '☀️', gems: 'Joyful Activation', gemsZh: '欢快激活', hue: 48  },
-  { group: 6, label: 'Serene',      labelZh: '宁静',   emoji: '🌿', gems: 'Peacefulness',      gemsZh: '平和',   hue: 145 },
-  { group: 7, label: 'Lyrical',     labelZh: '抒情',   emoji: '🎶', gems: 'Tenderness',        gemsZh: '温柔',   hue: 180 },
-  { group: 8, label: 'Melancholic', labelZh: '忧郁',   emoji: '🌙', gems: 'Sadness',           gemsZh: '哀愁',   hue: 225 },
+  { group: 1, label: 'Vigorous',    labelZh: '雄健',   emoji: '', gems: 'Power',             gemsZh: '力量感',  hue: 20  },
+  { group: 2, label: 'Triumphant',  labelZh: '激昂',   emoji: '', gems: 'Power',             gemsZh: '力量感',  hue: 40  },
+  { group: 3, label: 'Agitated',    labelZh: '激动',   emoji: '', gems: 'Tension',           gemsZh: '紧张',   hue: 0   },
+  { group: 4, label: 'Sprightly',   labelZh: '活泼',   emoji: '', gems: 'Joyful Activation', gemsZh: '欢快激活', hue: 55  },
+  { group: 5, label: 'Joyful',      labelZh: '欢快',   emoji: '', gems: 'Joyful Activation', gemsZh: '欢快激活', hue: 48  },
+  { group: 6, label: 'Serene',      labelZh: '宁静',   emoji: '', gems: 'Peacefulness',      gemsZh: '平和',   hue: 145 },
+  { group: 7, label: 'Lyrical',     labelZh: '抒情',   emoji: '', gems: 'Tenderness',        gemsZh: '温柔',   hue: 180 },
+  { group: 8, label: 'Melancholic', labelZh: '忧郁',   emoji: '', gems: 'Sadness',           gemsZh: '哀愁',   hue: 225 },
 ]
 
 // ── Semantic computation ──────────────────────────────────────────────
@@ -129,10 +132,28 @@ function powerTag(rmsNorm: number, lang: Lang): DimLabel {
 }
 
 function timbreTag(brightNorm: number, hz: number, lang: Lang): DimLabel {
-  if (brightNorm > 0.65) return { text: `${Math.round(hz)}Hz · Bright/Crisp`, textZh: `${Math.round(hz)}Hz 明亮·清脆`, bg: '#fef9c3', fg: '#78350f' }
-  if (brightNorm > 0.35) return { text: `${Math.round(hz)}Hz · Balanced`,     textZh: `${Math.round(hz)}Hz 均衡·温润`, bg: '#f3f4f6', fg: '#374151' }
-  return                  { text: `${Math.round(hz)}Hz · Dark/Heavy`,          textZh: `${Math.round(hz)}Hz 暗沉·厚重`, bg: '#e0e7ff', fg: '#3730a3' }
+  if (brightNorm > 0.80) return { text: `${Math.round(hz)}Hz · Piercing`,  textZh: `${Math.round(hz)}Hz 尖锐·刺激`, bg: '#fca5a5', fg: '#7f1d1d' }
+  if (brightNorm > 0.60) return { text: `${Math.round(hz)}Hz · Bright`,    textZh: `${Math.round(hz)}Hz 明亮·清脆`, bg: '#fef9c3', fg: '#78350f' }
+  if (brightNorm > 0.40) return { text: `${Math.round(hz)}Hz · Balanced`,  textZh: `${Math.round(hz)}Hz 均衡·温润`, bg: '#f3f4f6', fg: '#374151' }
+  if (brightNorm > 0.20) return { text: `${Math.round(hz)}Hz · Mellow`,    textZh: `${Math.round(hz)}Hz 柔和·温暖`, bg: '#d1fae5', fg: '#065f46' }
+  return                  { text: `${Math.round(hz)}Hz · Dark`,             textZh: `${Math.round(hz)}Hz 暗沉·厚重`, bg: '#e0e7ff', fg: '#3730a3' }
   void lang
+}
+
+/**
+ * Map normalised spectral centroid → texture tier (0–4).
+ * 0 = Piercing (dense vertical lines)
+ * 1 = Bright   (dense dots)
+ * 2 = Balanced (solid, no texture)
+ * 3 = Mellow   (sparse diagonal lines)
+ * 4 = Dark     (coarse grid)
+ */
+function textureTier(brightNorm: number): 0 | 1 | 2 | 3 | 4 {
+  if (brightNorm > 0.80) return 0
+  if (brightNorm > 0.60) return 1
+  if (brightNorm > 0.40) return 2
+  if (brightNorm > 0.20) return 3
+  return 4
 }
 
 function pitchTag(pitchNorm: number | null, avgSt: number | null, lang: Lang): DimLabel {
@@ -165,10 +186,6 @@ function tonicCofIndex(seg: Segment): { cofIndex: number; isMajor: boolean; from
   return { cofIndex: seg.features.dominant_pitch.cof_index, isMajor: true, fromPYIN: false }
 }
 
-function consonanceStrokeW(chromaCof: number[]): number {
-  const peak = Math.max(...chromaCof)
-  return 0.5 + Math.max(0, Math.min(1, (peak - 0.10) / 0.13)) * 3.3
-}
 
 /**
  * Build SVG polygon points string for a 12-vertex pitch-class radar.
@@ -194,12 +211,11 @@ function radarPolyPts(
 
 // ── Component ─────────────────────────────────────────────────────────
 
-export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
-  const [tooltip,       setTooltip      ] = useState<{ seg: Segment; svgX: number; svgY: number } | null>(null)
-  const [showSemantic,  setShowSemantic ] = useState(true)
-  const [showRussell,   setShowRussell  ] = useState(true)
-  const [hoveredDot,    setHoveredDot   ] = useState<number | null>(null)
-
+export function MentalLandscapePage({ data, theme, isDark, lang, selectedSeg, onSegSelect }: Props) {
+  const [tooltip,        setTooltip      ] = useState<{ seg: Segment; svgX: number; svgY: number } | null>(null)
+  const [showSemantic,   setShowSemantic ] = useState(true)
+  const [showRussell,    setShowRussell  ] = useState(true)
+  const [hoveredDot,     setHoveredDot   ] = useState<number | null>(null)
   const segments = data.segments
   const N        = segments.length
   const SVG_W    = PAD_X * 2 + N * CELL_W
@@ -222,10 +238,7 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
   const minCons = Math.min(...allCons), maxCons = Math.max(...allCons)
   const normCons  = (v: number) => maxCons === minCons ? 0.5 : (v - minCons) / (maxCons - minCons)
 
-  // Fixed geometry for Theme ghost polygon — always uses Theme segment's own RMS scale
-  const themeRNorm  = normRms(segments[0].features.rms_mean)
-  const themeBaseR  = 14 + themeRNorm * (GLYPH_R - 14)
-  const themeInnerR = themeBaseR * 0.28
+  // Fixed geometry for Theme ghost polygon
   const themeChromaFixed = segments[0].features.chroma_chromatic
 
   const pitchVals    = segments.map(avgMidiRelative)
@@ -247,7 +260,6 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
     const hue     = cofHue(cofIndex)
     const sat     = isMajor ? 65 : 52
     const lit     = isMajor ? 52 : 40
-    const strokeW = consonanceStrokeW(f.chroma_cof)
 
     const rNorm   = normRms(f.rms_mean)
     const oNorm   = normOnset(f.onset_density)
@@ -256,18 +268,21 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
     const pVal    = pitchVals[i]
     const pNorm   = normPitch(pVal)
 
-    // Radar geometry — overall size driven by RMS
+    // Size → RMS (single loudness channel)
     const baseR   = 14 + rNorm * (GLYPH_R - 14)   // outer vertex radius (14–30px)
-    const innerR  = baseR * 0.28                   // inner hole (small, keeps hollow centre)
-    const opacity = 0.50 + rNorm * 0.42
-    const coronaR = cNorm * CORONA_MAX
+    const innerR  = baseR * 0.28
+
+    // fillOpacity: fixed per mode (no channel wasted on rhythm)
+    const opacity = isMajor ? 0.70 : 0.55
+
+    // Timbre tier → Blur Halo intensity (0=Piercing strongest, 4=Dark no halo)
+    const tier    = textureTier(cNorm)
+
+    // Onset density → concentric ring count (1 = none beyond guide, up to 4)
+    const nRings  = 1 + Math.round(oNorm * 3)       // 1–4
 
     // 12-vertex pitch-class radar polygon (chromatic/semitone order)
     const polyPts = radarPolyPts(0, 0, f.chroma_chromatic, baseR, innerR)
-
-    // Onset density → radial tick marks outside the ring
-    const nTicks  = Math.round(4 + oNorm * 12)       // 4–16 ticks
-    const tickLen = 3 + oNorm * 5                     // 3–8 px
 
     const cx = PAD_X + i * CELL_W + CELL_W / 2
     const cy = CENTER_Y + (0.5 - pNorm) * Y_RANGE
@@ -296,9 +311,9 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
     const tagPitch   = pitchTag(pNorm, pVal, lang)
 
     return {
-      seg, i, hue, sat, lit, strokeW,
-      baseR, innerR, polyPts, nTicks, tickLen,
-      opacity, coronaR,
+      seg, i, hue, sat, lit,
+      baseR, innerR, polyPts,
+      opacity, tier, nRings,
       cx, cy, isMajor, fromPYIN, cofIndex,
       arousal, valence, brightness, pNorm,
       hevner,
@@ -341,8 +356,8 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
         </span>
         <span style={{ fontSize: 10, color: theme.labelSecondaryColor }}>
           {lang === 'zh'
-            ? '多边形=音级雷达 · 刻度线=节奏密度 · 描边=协和度 · 大小=响度 · 外晕=音色 · 纵位=旋律高度 · 虚线=主题基准'
-            : 'Polygon=pitch-class radar · Ticks=onset · Stroke=consonance · Size=loudness · Corona=timbre · Y=pitch · Dashed=Theme ref'}
+            ? '多边形=音级雷达 · 同心环=节奏密度 · 大小=响度 · 光晕=音色亮度 · 纵位=旋律高度 · 虚线=主题基准'
+            : 'Polygon=pitch-class radar · Rings=rhythm density · Size=loudness · Halo=timbre brightness · Y=pitch · Dashed=Theme ref'}
         </span>
       </div>
 
@@ -371,19 +386,27 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
             </g>
           )}
 
+          {/* Blur filter defs — shared by all glyphs; tier 0=strongest, 1=medium, 2-4=none */}
+          <defs>
+            <filter id="halo-0" x="-70%" y="-70%" width="240%" height="240%">
+              <feGaussianBlur stdDeviation="7"/>
+            </filter>
+            <filter id="halo-1" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="4"/>
+            </filter>
+          </defs>
+
           {/* Glyphs */}
           {glyphs.map(g => {
-            const { seg, hue, sat, lit, strokeW, baseR, innerR, polyPts, nTicks, tickLen, opacity, coronaR, cx, cy, isMajor, fromPYIN, hevner } = g
+            const { seg, hue, sat, lit, baseR, innerR, opacity, tier, nRings, cx, cy, isMajor, fromPYIN, hevner } = g
             const tonicHsl  = `hsl(${hue},${sat}%,${lit}%)`
             const strokeHsl = `hsl(${hue},${Math.round(sat * 0.85)}%,${lit - 14}%)`
-            const tickHsl   = `hsl(${hue},${Math.round(sat * 0.7)}%,${lit - 8}%)`
             const dotFill   = isMajor
               ? `hsl(${hue},${Math.round(sat * 0.55)}%,${lit + 24}%)`
               : `hsl(${hue},${Math.round(sat * 0.75)}%,${lit - 20}%)`
             const badgeBg   = `hsl(${hevner.hue},60%,93%)`
             const badgeFg   = `hsl(${hevner.hue},55%,30%)`
             const isTheme  = seg.label === 'T'
-            // Theme ghost: use current variation's baseR/innerR so the ghost scales with the glyph
             const ghostPts = radarPolyPts(cx, cy, themeChromaFixed, baseR, innerR)
 
             return (
@@ -394,39 +417,25 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
                   setTooltip({ seg, svgX: e.clientX - br.left, svgY: e.clientY - br.top })
                 }}
                 onMouseLeave={() => setTooltip(null)}
-                style={{ cursor: 'crosshair' }}
+                onClick={() => onSegSelect?.(g.i)}
+                style={{
+                  cursor: 'pointer',
+                  opacity: selectedSeg !== null && selectedSeg !== g.i ? 0.20 : 1,
+                  transition: 'opacity 0.18s',
+                }}
               >
-                {/* Corona (spectral centroid outer glow) */}
-                {coronaR > 1.5 && (
-                  <>
-                    <circle cx={cx} cy={cy} r={baseR + coronaR}        fill={tonicHsl} fillOpacity={0.13} stroke="none" />
-                    <circle cx={cx} cy={cy} r={baseR + coronaR * 0.62} fill={tonicHsl} fillOpacity={0.24} stroke="none" />
-                    <circle cx={cx} cy={cy} r={baseR + coronaR * 0.32} fill={tonicHsl} fillOpacity={0.38} stroke="none" />
-                  </>
+                {/* ── Blur Halo (timbre brightness, tier 0–1 only) ──────── */}
+                {tier <= 1 && (
+                  <polygon
+                    points={radarPolyPts(cx, cy, seg.features.chroma_chromatic, baseR, innerR)}
+                    fill={tonicHsl}
+                    fillOpacity={tier === 0 ? 0.52 : 0.36}
+                    stroke="none"
+                    filter={`url(#halo-${tier})`}
+                  />
                 )}
 
-                {/* Onset density: radial tick marks outside the ring */}
-                {Array.from({ length: nTicks }, (_, ti) => {
-                  const a  = (ti / nTicks) * 2 * Math.PI - Math.PI / 2
-                  const r0 = baseR + 3
-                  const r1 = r0 + tickLen
-                  return (
-                    <line key={ti}
-                      x1={(cx + r0 * Math.cos(a)).toFixed(2)} y1={(cy + r0 * Math.sin(a)).toFixed(2)}
-                      x2={(cx + r1 * Math.cos(a)).toFixed(2)} y2={(cy + r1 * Math.sin(a)).toFixed(2)}
-                      stroke={tickHsl} strokeWidth={1.2} strokeLinecap="round" opacity={0.75}
-                    />
-                  )
-                })}
-
-                {/* Outer guide circle */}
-                <circle cx={cx} cy={cy} r={baseR}
-                  fill="none"
-                  stroke={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)'}
-                  strokeWidth={0.6} strokeDasharray="2 3"
-                />
-
-                {/* Theme ghost silhouette (shown on all non-theme glyphs) */}
+                {/* ── Theme ghost silhouette ────────────────────────── */}
                 {!isTheme && (
                   <polygon points={ghostPts}
                     fill="rgba(148,163,184,0.14)"
@@ -436,14 +445,40 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
                   />
                 )}
 
-                {/* Pitch-class radar polygon */}
+                {/* ── Pitch-class radar polygon ─────────────────────── */}
                 <polygon
                   points={radarPolyPts(cx, cy, seg.features.chroma_chromatic, baseR, innerR)}
                   fill={tonicHsl}
-                  fillOpacity={opacity * (isMajor ? 0.55 : 0.45)}
+                  fillOpacity={opacity}
                   stroke={strokeHsl}
-                  strokeWidth={strokeW * 0.55}
+                  strokeWidth={0.9}
                 />
+
+                {/* ── Concentric rings (onset density / rhythm) ─────── */}
+                {Array.from({ length: nRings - 1 }, (_, ri) => (
+                  <circle key={ri}
+                    cx={cx} cy={cy}
+                    r={baseR + (ri + 1) * 7}
+                    fill="none"
+                    stroke={tonicHsl}
+                    strokeWidth={0.8 - ri * 0.15}
+                    opacity={0.32 - ri * 0.07}
+                  />
+                ))}
+
+                {/* Outer guide circle (always present, dashed) */}
+                <circle cx={cx} cy={cy} r={baseR}
+                  fill="none"
+                  stroke={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)'}
+                  strokeWidth={0.6} strokeDasharray="2 3"
+                />
+
+                {/* Selection ring */}
+                {selectedSeg === g.i && (
+                  <circle cx={cx} cy={cy} r={baseR + 9}
+                    fill="none" stroke="#4361EE" strokeWidth={2.5} opacity={0.9}
+                  />
+                )}
 
                 {/* Mode dot */}
                 <circle cx={cx} cy={cy} r={2.8} fill={dotFill} fillOpacity={0.92} />
@@ -500,13 +535,32 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
             const ty = Math.max(svgY - TH - 10, 4)
             const modeStr = isMajor ? (lang === 'zh' ? ' 大调' : ' major') : (lang === 'zh' ? ' 小调' : ' minor')
 
+            // ── Top-3 CoF peak overlap with Theme ────────────────────
+            const top3 = (cof: number[]) =>
+              cof.map((v, i) => ({ v, i }))
+                 .sort((a, b) => b.v - a.v)
+                 .slice(0, 3)
+                 .map(x => x.i)
+            const themeTop3  = new Set(top3(segments[0].features.chroma_cof))
+            const segTop3    = top3(f.chroma_cof)
+            const sharedKeys = segTop3.filter(k => themeTop3.has(k))
+            const skelSim    = sharedKeys.length   // 0, 1, 2, or 3
+            const skelLabel  = [' 0/3', ' 1/3', ' 2/3', ' 3/3'][skelSim]
+            const skelNote   =
+              skelSim === 3 ? (lang === 'zh' ? '结构完全保留' : 'Full skeleton retained')  :
+              skelSim === 2 ? (lang === 'zh' ? '骨架基本稳固' : 'Skeleton mostly intact')  :
+              skelSim === 1 ? (lang === 'zh' ? '部分结构偏移' : 'Partial skeleton shift')  :
+                              (lang === 'zh' ? '骨架已完全离调' : 'Skeleton fully departed')
+
             const lines = [
               { k: lang === 'zh' ? '调性'   : 'Key',      v: `${tonicName}${modeStr}${fromPYIN ? ' (KS)' : ' (chroma)'}`, bold: true },
               { k: lang === 'zh' ? '节奏密度': 'Onset',    v: `${f.onset_density.toFixed(2)} /s` },
               { k: lang === 'zh' ? '响度 RMS': 'Loudness', v: f.rms_mean.toFixed(4) },
               { k: lang === 'zh' ? '频谱质心': 'Centroid', v: `${Math.round(f.spectral_centroid_mean)} Hz` },
-              { k: lang === 'zh' ? '协和度峰值': 'Consonance', v: `${Math.max(...f.chroma_cof).toFixed(3)} → ${consonanceStrokeW(f.chroma_cof).toFixed(1)}px` },
+              { k: lang === 'zh' ? '协和度峰值': 'Consonance', v: Math.max(...f.chroma_cof).toFixed(3) },
               ...(avgPitch !== null ? [{ k: lang === 'zh' ? '旋律高度' : 'Melody ht.', v: `${avgPitch.toFixed(1)} st` }] : []),
+              { k: lang === 'zh' ? '主题骨架相似度' : 'Theme skeleton sim.',
+                v: `${skelLabel}  ${skelNote}`, bold: skelSim === 3 },
               { k: '─────', v: '' },
               { k: lang === 'zh' ? '唤醒度' : 'Arousal',  v: `${(g.arousal * 100).toFixed(0)}%` },
               { k: lang === 'zh' ? '情感效价': 'Valence',  v: `${(g.valence * 100).toFixed(0)}%` },
@@ -551,15 +605,6 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
           </svg>
           <span style={{ marginTop: 8 }}>{lang === 'zh' ? '色相=调性（五度圈）' : 'Hue=key (CoF)'}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <svg width={72} height={22} style={{ overflow: 'visible' }}>
-            {([0.5,1.4,2.5,3.8] as number[]).map((sw,i)=>(
-              <circle key={i} cx={[10,26,46,64][i]} cy={11} r={9}
-                fill="rgba(100,100,120,0.42)" stroke="rgba(50,50,70,0.85)" strokeWidth={sw}/>
-            ))}
-          </svg>
-          <span>{lang === 'zh' ? '描边=协和度' : 'Stroke=consonance'}</span>
-        </div>
         {/* Radar polygon legend */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <svg width={48} height={28} style={{ overflow: 'visible' }}>
@@ -587,43 +632,69 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
               : <span>Polygon=pitch-class radar<br/><span style={{ opacity: 0.65 }}>Dashed=Theme reference</span></span>}
           </span>
         </div>
-        {/* Tick marks legend */}
+        {/* Concentric rings legend — onset/rhythm density */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <svg width={76} height={22} style={{ overflow: 'visible' }}>
-            {([0.1, 0.35, 0.65, 0.9] as number[]).map((oN, i) => {
-              const n = Math.round(4 + oN * 12)
-              const cx = [10, 25, 44, 65][i]
-              return Array.from({ length: n }, (_, ti) => {
-                const a = (ti / n) * 2 * Math.PI - Math.PI / 2
-                const r0 = 8, r1 = r0 + 3 + oN * 4
-                return <line key={ti}
-                  x1={(cx + r0 * Math.cos(a)).toFixed(1)} y1={(11 + r0 * Math.sin(a)).toFixed(1)}
-                  x2={(cx + r1 * Math.cos(a)).toFixed(1)} y2={(11 + r1 * Math.sin(a)).toFixed(1)}
-                  stroke="rgba(100,100,140,0.7)" strokeWidth={1.1} strokeLinecap="round" />
-              })
+          <svg width={86} height={26} style={{ overflow: 'visible' }}>
+            {([1, 2, 3, 4] as const).map((nr, i) => {
+              const cx = [9, 28, 52, 76][i], cy = 13, baseR = 7
+              return (
+                <g key={i}>
+                  <circle cx={cx} cy={cy} r={baseR}
+                    fill="rgba(100,100,180,0.55)" stroke="rgba(70,70,140,0.4)" strokeWidth={0.7}/>
+                  {Array.from({ length: nr - 1 }, (_, ri) => (
+                    <circle key={ri} cx={cx} cy={cy} r={baseR + (ri + 1) * 5}
+                      fill="none" stroke="rgba(70,70,140,0.55)"
+                      strokeWidth={0.7 - ri * 0.12} opacity={0.35 - ri * 0.07}/>
+                  ))}
+                </g>
+              )
             })}
           </svg>
-          <span>{lang === 'zh' ? '刻度线=节奏密度' : 'Ticks=onset density'}</span>
+          <span>{lang === 'zh' ? '同心环=节奏密度 (稀疏→致密)' : 'Rings=onset density (sparse→dense)'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <svg width={62} height={24} style={{ overflow: 'visible' }}>
-            {([5,9,14,20] as number[]).map((r,i)=>(
+            {([5, 9, 14, 20] as number[]).map((r, i) => (
               <circle key={i} cx={[5,16,31,52][i]} cy={12} r={r}
-                fill={`rgba(100,100,120,${[0.28,0.42,0.60,0.85][i]})`}
+                fill="rgba(100,100,120,0.62)"
                 stroke="rgba(100,100,120,0.35)" strokeWidth={0.7}/>
             ))}
           </svg>
-          <span>{lang === 'zh' ? '大小+透明度=响度' : 'Size+opacity=loudness'}</span>
+          <span>{lang === 'zh' ? '大小=响度 (单通道)' : 'Size=loudness (single channel)'}</span>
         </div>
+        {/* Blur halo legend — timbre brightness */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <svg width={56} height={28} style={{ overflow: 'visible' }}>
-            <circle cx={12} cy={14} r={9} fill="hsl(195,65%,52%)" fillOpacity={0.82} stroke="hsl(195,55%,36%)" strokeWidth={1}/>
-            <circle cx={44} cy={14} r={18} fill="hsl(195,65%,52%)" fillOpacity={0.13} stroke="none"/>
-            <circle cx={44} cy={14} r={14} fill="hsl(195,65%,52%)" fillOpacity={0.22} stroke="none"/>
-            <circle cx={44} cy={14} r={10} fill="hsl(195,65%,52%)" fillOpacity={0.36} stroke="none"/>
-            <circle cx={44} cy={14} r={9}  fill="hsl(195,65%,52%)" fillOpacity={0.82} stroke="hsl(195,55%,36%)" strokeWidth={1}/>
+          <svg width={115} height={28} style={{ overflow: 'visible' }}>
+            <defs>
+              <filter id="leg-halo-0" x="-80%" y="-80%" width="260%" height="260%">
+                <feGaussianBlur stdDeviation="6"/>
+              </filter>
+              <filter id="leg-halo-1" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="3.5"/>
+              </filter>
+            </defs>
+            {([
+              { label: 'Piercing', hue: 0,   filterId: 'leg-halo-0', haloOp: 0.50 },
+              { label: 'Bright',   hue: 45,  filterId: 'leg-halo-1', haloOp: 0.36 },
+              { label: 'Balanced', hue: 145, filterId: null,          haloOp: 0    },
+              { label: 'Mellow',   hue: 180, filterId: null,          haloOp: 0    },
+              { label: 'Dark',     hue: 225, filterId: null,          haloOp: 0    },
+            ] as const).map(({ hue, filterId, haloOp }, i) => {
+              const cx = 10 + i * 23, cy = 14, r = 7
+              const fill = `hsl(${hue},60%,52%)`
+              return (
+                <g key={i}>
+                  {filterId && (
+                    <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={haloOp}
+                      stroke="none" filter={`url(#${filterId})`}/>
+                  )}
+                  <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={0.70}
+                    stroke={`hsl(${hue},50%,38%)`} strokeWidth={0.7}/>
+                </g>
+              )
+            })}
           </svg>
-          <span>{lang === 'zh' ? '外晕=音色亮度' : 'Corona=timbre brightness'}</span>
+          <span>{lang === 'zh' ? '光晕=音色 (尖锐→厚重)' : 'Halo=timbre (Piercing→Dark)'}</span>
         </div>
         {hasPitch && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -666,8 +737,8 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
         >
           <span style={{ fontWeight: 700, fontSize: 10, color: theme.labelColor }}>
             {lang === 'zh'
-              ? '🔮 情感轨迹 · Russell (1980) 唤醒 × 效价平面'
-              : '🔮 Emotion Trajectory · Russell (1980) Arousal × Valence Plane'}
+              ? ' 情感轨迹 · Russell (1980) 唤醒 × 效价平面'
+              : ' Emotion Trajectory · Russell (1980) Arousal × Valence Plane'}
           </span>
           <span style={{ fontSize: 10, color: theme.labelSecondaryColor }}>
             {showRussell ? '▲' : '▼'}
@@ -679,48 +750,102 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
           const toX = (v: number) => RC_PAD + v * RC_PW
           const toY = (a: number) => RC_PAD + (1 - a) * RC_PH
 
-          // Quadrant labels
-          const qLabels = [
-            { x: RC_PAD + RC_PW * 0.75, y: RC_PAD + RC_PH * 0.15, en: 'Energetic', zh: '高能' },
-            { x: RC_PAD + RC_PW * 0.15, y: RC_PAD + RC_PH * 0.15, en: 'Tense',     zh: '紧张' },
-            { x: RC_PAD + RC_PW * 0.75, y: RC_PAD + RC_PH * 0.90, en: 'Joyful',    zh: '欢快' },
-            { x: RC_PAD + RC_PW * 0.15, y: RC_PAD + RC_PH * 0.90, en: 'Calm',      zh: '平静' },
+          // Quadrant descriptors for Russell (1980) circumplex
+          // X = Valence (→ right = positive), Y = Arousal (↑ = high)
+          const qZones = [
+            {
+              // Top-right: High Arousal + Positive Valence
+              x: RC_PAD + RC_PW * 0.73, y: RC_PAD + RC_PH * 0.10,
+              en: 'Energetic / Excited',   zh: '兴奋活力',
+              subEn: 'Alert · Active · Elated', subZh: '警觉·活跃·激昂',
+              fill: '#fee2e2',
+            },
+            {
+              // Top-left: High Arousal + Negative Valence
+              x: RC_PAD + RC_PW * 0.20, y: RC_PAD + RC_PH * 0.10,
+              en: 'Tense / Distressed',     zh: '紧张焦虑',
+              subEn: 'Anxious · Angry · Afraid', subZh: '焦虑·愤怒·恐惧',
+              fill: '#fef3c7',
+            },
+            {
+              // Bottom-right: Low Arousal + Positive Valence
+              x: RC_PAD + RC_PW * 0.73, y: RC_PAD + RC_PH * 0.94,
+              en: 'Calm / Relaxed',         zh: '平静放松',
+              subEn: 'Serene · Content · Happy', subZh: '宁静·满足·愉快',
+              fill: '#dcfce7',
+            },
+            {
+              // Bottom-left: Low Arousal + Negative Valence
+              x: RC_PAD + RC_PW * 0.20, y: RC_PAD + RC_PH * 0.94,
+              en: 'Depressed / Sad',        zh: '忧郁低落',
+              subEn: 'Melancholic · Bored · Tired', subZh: '忧郁·沉闷·疲倦',
+              fill: '#dbeafe',
+            },
           ]
 
           return (
             <div style={{
-              display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12,
-              padding: '10px 16px 12px',
+              display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16,
+              padding: '12px 16px 14px',
               background: isDark ? '#161626' : '#ffffff',
             }}>
               {/* SVG plot */}
               <svg width={RC_W} height={RC_H} style={{ flexShrink: 0 }}>
+                <defs>
+                  {/* Halo filters for mini glyph in hover tooltip */}
+                  <filter id="rc-halo-0" x="-80%" y="-80%" width="260%" height="260%">
+                    <feGaussianBlur stdDeviation="5"/>
+                  </filter>
+                  <filter id="rc-halo-1" x="-60%" y="-60%" width="220%" height="220%">
+                    <feGaussianBlur stdDeviation="3"/>
+                  </filter>
+                </defs>
+
                 {/* Background quadrant tints */}
-                <rect x={RC_PAD + RC_PW/2} y={RC_PAD}            width={RC_PW/2} height={RC_PH/2} fill="#fee2e2" opacity={0.22} />
-                <rect x={RC_PAD}           y={RC_PAD}            width={RC_PW/2} height={RC_PH/2} fill="#fef3c7" opacity={0.22} />
-                <rect x={RC_PAD + RC_PW/2} y={RC_PAD + RC_PH/2} width={RC_PW/2} height={RC_PH/2} fill="#dcfce7" opacity={0.22} />
-                <rect x={RC_PAD}           y={RC_PAD + RC_PH/2} width={RC_PW/2} height={RC_PH/2} fill="#dbeafe" opacity={0.22} />
+                <rect x={RC_PAD + RC_PW/2} y={RC_PAD}            width={RC_PW/2} height={RC_PH/2} fill="#fee2e2" opacity={0.25} />
+                <rect x={RC_PAD}           y={RC_PAD}            width={RC_PW/2} height={RC_PH/2} fill="#fef3c7" opacity={0.25} />
+                <rect x={RC_PAD + RC_PW/2} y={RC_PAD + RC_PH/2} width={RC_PW/2} height={RC_PH/2} fill="#dcfce7" opacity={0.25} />
+                <rect x={RC_PAD}           y={RC_PAD + RC_PH/2} width={RC_PW/2} height={RC_PH/2} fill="#dbeafe" opacity={0.25} />
 
                 {/* Axes */}
                 <line x1={RC_PAD} y1={RC_PAD + RC_PH/2} x2={RC_PAD + RC_PW} y2={RC_PAD + RC_PH/2}
-                  stroke={isDark ? '#44445a' : '#cbd5e1'} strokeWidth={0.8} />
+                  stroke={isDark ? '#44445a' : '#cbd5e1'} strokeWidth={1.0} />
                 <line x1={RC_PAD + RC_PW/2} y1={RC_PAD} x2={RC_PAD + RC_PW/2} y2={RC_PAD + RC_PH}
-                  stroke={isDark ? '#44445a' : '#cbd5e1'} strokeWidth={0.8} />
+                  stroke={isDark ? '#44445a' : '#cbd5e1'} strokeWidth={1.0} />
 
-                {/* Axis tick labels */}
-                <text x={RC_PAD + RC_PW + 2} y={RC_PAD + RC_PH/2 + 3} fontSize={7} fill={isDark ? '#666' : '#94a3b8'}>
+                {/* Axis labels */}
+                <text x={RC_PAD + RC_PW + 4} y={RC_PAD + RC_PH/2 + 4} fontSize={8.5} fill={isDark ? '#666' : '#94a3b8'}>
                   {lang === 'zh' ? '效价 →' : 'Valence →'}
                 </text>
-                <text x={RC_PAD - 4} y={RC_PAD - 4} fontSize={7} fill={isDark ? '#666' : '#94a3b8'} textAnchor="middle">
-                  {lang === 'zh' ? '↑唤醒' : '↑Arousal'}
+                <text x={RC_PAD + RC_PW/2} y={RC_PAD - 6} fontSize={8.5} fill={isDark ? '#666' : '#94a3b8'} textAnchor="middle">
+                  {lang === 'zh' ? '↑ 唤醒度' : '↑ Arousal'}
+                </text>
+                {/* Axis end markers */}
+                <text x={RC_PAD + 3} y={RC_PAD + RC_PH/2 - 5} fontSize={7} fill={isDark ? '#484860' : '#b0bec5'}>
+                  {lang === 'zh' ? '负效价' : '− Valence'}
+                </text>
+                <text x={RC_PAD + RC_PW - 3} y={RC_PAD + RC_PH/2 - 5} fontSize={7} fill={isDark ? '#484860' : '#b0bec5'} textAnchor="end">
+                  {lang === 'zh' ? '正效价' : '+ Valence'}
+                </text>
+                <text x={RC_PAD + RC_PW/2 + 5} y={RC_PAD + 10} fontSize={7} fill={isDark ? '#484860' : '#b0bec5'}>
+                  {lang === 'zh' ? '高唤醒' : 'High'}
+                </text>
+                <text x={RC_PAD + RC_PW/2 + 5} y={RC_PAD + RC_PH - 3} fontSize={7} fill={isDark ? '#484860' : '#b0bec5'}>
+                  {lang === 'zh' ? '低唤醒' : 'Low'}
                 </text>
 
-                {/* Quadrant labels */}
-                {qLabels.map((q, qi) => (
-                  <text key={qi} x={q.x} y={q.y} fontSize={7} textAnchor="middle"
-                    fill={isDark ? '#555' : '#94a3b8'} fontStyle="italic">
-                    {lang === 'zh' ? q.zh : q.en}
-                  </text>
+                {/* Quadrant zone labels with descriptions */}
+                {qZones.map((q, qi) => (
+                  <g key={qi}>
+                    <text x={q.x} y={q.y} fontSize={9} textAnchor="middle"
+                      fontWeight={600} fill={isDark ? '#5a5a7a' : '#6b7280'}>
+                      {lang === 'zh' ? q.zh : q.en}
+                    </text>
+                    <text x={q.x} y={q.y + 13} fontSize={7} textAnchor="middle"
+                      fill={isDark ? '#40405a' : '#94a3b8'} fontStyle="italic">
+                      {lang === 'zh' ? q.subZh : q.subEn}
+                    </text>
+                  </g>
                 ))}
 
                 {/* Trajectory polyline */}
@@ -728,8 +853,8 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
                   points={glyphs.map(g => `${toX(g.valence).toFixed(1)},${toY(g.arousal).toFixed(1)}`).join(' ')}
                   fill="none"
                   stroke={isDark ? '#44445a' : '#cbd5e1'}
-                  strokeWidth={1.0}
-                  strokeDasharray="2,2"
+                  strokeWidth={1.2}
+                  strokeDasharray="3,3"
                 />
 
                 {/* Dots */}
@@ -737,41 +862,112 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
                   const px = toX(g.valence)
                   const py = toY(g.arousal)
                   const isHov = hoveredDot === gi
-                  const r = isHov ? 6.5 : 5
+                  const r = isHov ? 7.5 : 6
+
+                  // ── Mini glyph params for hover tooltip ──────────────
+                  const tipW = 168, tipH = 110
+                  const tipX = Math.max(4, px > RC_W * 0.55 ? px - tipW - 10 : px + r + 10)
+                  const tipY = Math.max(4, Math.min(py - tipH / 2, RC_H - tipH - 4))
+                  const miniR      = 24
+                  const miniInnerR = miniR * 0.28
+                  const miniCx     = tipX + 32
+                  const miniCy     = tipY + tipH / 2
+                  const miniPolyPts = radarPolyPts(miniCx, miniCy, g.seg.features.chroma_chromatic, miniR, miniInnerR)
+                  const tonicHsl   = `hsl(${g.hue},${g.sat}%,${g.lit}%)`
+                  const strokeHsl  = `hsl(${g.hue},${Math.round(g.sat * 0.85)}%,${g.lit - 14}%)`
+                  const dotFill    = g.isMajor
+                    ? `hsl(${g.hue},${Math.round(g.sat * 0.55)}%,${g.lit + 24}%)`
+                    : `hsl(${g.hue},${Math.round(g.sat * 0.75)}%,${g.lit - 20}%)`
+
                   return (
                     <g key={gi}
                       onMouseEnter={() => setHoveredDot(gi)}
                       onMouseLeave={() => setHoveredDot(null)}
-                      style={{ cursor: 'default' }}
+                      onClick={() => onSegSelect?.(gi)}
+                      style={{ cursor: 'pointer' }}
                     >
-                      <circle cx={px} cy={py} r={r + 2} fill={`hsl(${g.hue},60%,60%)`} opacity={0.18} />
+                      <circle cx={px} cy={py} r={r + 3} fill={`hsl(${g.hue},60%,60%)`} opacity={0.15} />
                       <circle cx={px} cy={py} r={r}
                         fill={`hsl(${g.hue},${g.sat}%,${g.lit}%)`}
                         stroke={isDark ? '#1b1b2d' : '#fff'}
-                        strokeWidth={1.2}
-                        opacity={0.90}
+                        strokeWidth={isHov ? 1.8 : 1.3}
+                        opacity={0.92}
                       />
-                      {/* Segment label inside or above dot */}
-                      <text x={px} y={py - r - 1.5} textAnchor="middle" fontSize={6}
-                        fill={isDark ? '#aaa' : '#64748b'} fontWeight={500}>
+                      {/* Segment label above dot */}
+                      <text x={px} y={py - r - 2} textAnchor="middle" fontSize={7}
+                        fill={isDark ? '#aaa' : '#64748b'} fontWeight={600}>
                         {g.seg.label}
                       </text>
-                      {/* Hover tooltip */}
+
+                      {/* ── Hover tooltip with mini glyph ───────────── */}
                       {isHov && (
                         <g style={{ pointerEvents: 'none' }}>
-                          <rect x={px + 7} y={py - 20} width={72} height={32} rx={3}
-                            fill={isDark ? '#1b1b2d' : '#fff'}
-                            stroke={isDark ? '#44445a' : '#d0d0d8'} strokeWidth={0.7} opacity={0.97} />
-                          <text x={px + 11} y={py - 10} fontSize={7.5} fontWeight={700}
+                          {/* Tooltip background */}
+                          <rect x={tipX} y={tipY} width={tipW} height={tipH} rx={6}
+                            fill={isDark ? '#1b1b2d' : '#ffffff'}
+                            stroke={isDark ? '#44445a' : '#d0d0d8'} strokeWidth={0.9} opacity={0.97} />
+
+                          {/* Divider */}
+                          <line x1={tipX + 64} y1={tipY + 6} x2={tipX + 64} y2={tipY + tipH - 6}
+                            stroke={isDark ? '#2d2d45' : '#e5e7eb'} strokeWidth={0.7} />
+
+                          {/* ── Mini glyph rendering ── */}
+                          {/* Halo (timbre brightness tier) */}
+                          {g.tier <= 1 && (
+                            <polygon points={miniPolyPts}
+                              fill={tonicHsl}
+                              fillOpacity={g.tier === 0 ? 0.46 : 0.30}
+                              stroke="none"
+                              filter={`url(#rc-halo-${g.tier})`} />
+                          )}
+                          {/* Concentric rings (onset density) */}
+                          {Array.from({ length: g.nRings - 1 }, (_, ri) => (
+                            <circle key={ri} cx={miniCx} cy={miniCy}
+                              r={miniR + (ri + 1) * 5}
+                              fill="none" stroke={tonicHsl}
+                              strokeWidth={0.55} opacity={0.26 - ri * 0.05} />
+                          ))}
+                          {/* Pitch-class radar polygon */}
+                          <polygon points={miniPolyPts}
+                            fill={tonicHsl} fillOpacity={g.opacity}
+                            stroke={strokeHsl} strokeWidth={0.8} />
+                          {/* Mode dot */}
+                          <circle cx={miniCx} cy={miniCy} r={2.5} fill={dotFill} fillOpacity={0.92} />
+                          {/* Segment label below mini glyph */}
+                          <text x={miniCx} y={tipY + tipH - 9} textAnchor="middle"
+                            fontSize={7.5} fontWeight={700} fill={theme.labelColor}>
+                            {g.seg.label}
+                          </text>
+
+                          {/* ── Text info (right of divider) ── */}
+                          <text x={tipX + 72} y={tipY + 20} fontSize={10} fontWeight={700}
                             fill={theme.labelColor}>
                             {g.hevner.emoji} {lang === 'zh' ? g.hevner.labelZh : g.hevner.label}
                           </text>
-                          <text x={px + 11} y={py + 0} fontSize={7} fill={theme.labelSecondaryColor}>
-                            {lang === 'zh' ? `↑${(g.arousal*100).toFixed(0)}% ♥${(g.valence*100).toFixed(0)}%`
-                                           : `A:${(g.arousal*100).toFixed(0)}% V:${(g.valence*100).toFixed(0)}%`}
-                          </text>
-                          <text x={px + 11} y={py + 10} fontSize={7} fill={theme.labelSecondaryColor}>
+                          <text x={tipX + 72} y={tipY + 36} fontSize={8} fill={theme.labelSecondaryColor}>
                             {lang === 'zh' ? g.hevner.gemsZh : g.hevner.gems}
+                          </text>
+                          <text x={tipX + 72} y={tipY + 52} fontSize={8} fill={theme.labelSecondaryColor}>
+                            {lang === 'zh'
+                              ? `唤醒 ${(g.arousal * 100).toFixed(0)}%`
+                              : `Arousal ${(g.arousal * 100).toFixed(0)}%`}
+                          </text>
+                          <text x={tipX + 72} y={tipY + 66} fontSize={8} fill={theme.labelSecondaryColor}>
+                            {lang === 'zh'
+                              ? `效价 ${(g.valence * 100).toFixed(0)}%`
+                              : `Valence ${(g.valence * 100).toFixed(0)}%`}
+                          </text>
+                          <text x={tipX + 72} y={tipY + 81} fontSize={7.5} fill={theme.labelSecondaryColor}>
+                            {(() => {
+                              const { fromPYIN, isMajor } = g
+                              const name = fromPYIN
+                                ? g.seg.features.pitch_contour!.tonic_name
+                                : g.seg.features.dominant_pitch.name
+                              return `${name}${isMajor ? '' : 'm'}${fromPYIN ? '' : '*'}`
+                            })()}
+                          </text>
+                          <text x={tipX + 72} y={tipY + 96} fontSize={7} fill={theme.labelSecondaryColor}>
+                            Hevner {g.hevner.group}
                           </text>
                         </g>
                       )}
@@ -781,43 +977,46 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
               </svg>
 
               {/* Legend / segment index */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 8.5 }}>
-                <div style={{ fontWeight: 700, fontSize: 9, color: theme.labelColor, marginBottom: 2 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 8.5, minWidth: 160 }}>
+                <div style={{ fontWeight: 700, fontSize: 9.5, color: theme.labelColor, marginBottom: 2 }}>
                   {lang === 'zh' ? '各段情感坐标' : 'Segment emotions'}
                 </div>
                 {glyphs.map((g, gi) => (
                   <div key={gi}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      opacity: hoveredDot === null || hoveredDot === gi ? 1 : 0.38,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      opacity: hoveredDot === null || hoveredDot === gi ? 1 : 0.35,
                       transition: 'opacity 0.15s',
+                      cursor: 'default',
                     }}
                     onMouseEnter={() => setHoveredDot(gi)}
                     onMouseLeave={() => setHoveredDot(null)}
                   >
-                    <svg width={10} height={10}>
-                      <circle cx={5} cy={5} r={4.5}
+                    <svg width={12} height={12}>
+                      <circle cx={6} cy={6} r={5.5}
                         fill={`hsl(${g.hue},${g.sat}%,${g.lit}%)`} opacity={0.9} />
                     </svg>
-                    <span style={{ color: theme.labelColor, fontWeight: g.seg.label.startsWith('V') ? 700 : 400 }}>
+                    <span style={{ color: theme.labelColor, fontWeight: g.seg.label.startsWith('V') ? 700 : 400, minWidth: 22 }}>
                       {g.seg.label}
                     </span>
                     <span style={{ color: theme.labelSecondaryColor }}>
                       {g.hevner.emoji} {lang === 'zh' ? g.hevner.labelZh : g.hevner.label}
                     </span>
-                    <span style={{ color: theme.labelSecondaryColor, marginLeft: 2 }}>
-                      [{(g.valence*100).toFixed(0)},{(g.arousal*100).toFixed(0)}]
+                    <span style={{ color: theme.labelSecondaryColor, marginLeft: 'auto', paddingLeft: 4, whiteSpace: 'nowrap' }}>
+                      [{(g.valence * 100).toFixed(0)}, {(g.arousal * 100).toFixed(0)}]
                     </span>
                   </div>
                 ))}
                 <div style={{
-                  marginTop: 6, paddingTop: 6,
+                  marginTop: 8, paddingTop: 8,
                   borderTop: `1px solid ${isDark ? '#2d2d45' : '#e5e7eb'}`,
-                  color: theme.labelSecondaryColor, fontSize: 7.5, lineHeight: 1.6,
+                  color: theme.labelSecondaryColor, fontSize: 7.5, lineHeight: 1.8,
                 }}>
-                  {lang === 'zh'
-                    ? '虚线=时间顺序轨迹\n圆点颜色=五度圈调性'
-                    : 'Dashed = temporal order\nDot color = CoF key'}
+                  {lang === 'zh' ? (
+                    <>虚线 = 时间顺序轨迹<br/>圆点颜色 = 五度圈调性<br/>Hover 圆点查看图形</>
+                  ) : (
+                    <>Dashed line = temporal order<br/>Dot color = CoF key<br/>Hover dot to view glyph</>
+                  )}
                 </div>
               </div>
             </div>
@@ -825,10 +1024,7 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
         })()}
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          SEMANTIC ANNOTATION PANEL
-          心理语义注释 — 基于 Hevner 形容词圆环 × GEMS 情绪量表
-      ══════════════════════════════════════════════════════════════ */}
+      {/* ═══════════════ SEMANTIC ANNOTATION PANEL ═══════════════ */}
       <div style={{
         margin: '4px 14px 14px',
         border: `1px solid ${isDark ? '#2d2d45' : '#e5e7eb'}`,
@@ -849,8 +1045,8 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
         >
           <span style={{ fontWeight: 700, fontSize: 10, color: theme.labelColor }}>
             {lang === 'zh'
-              ? '🧠 心理语义注释 · 基于 Hevner 形容词圆环 × GEMS 情绪量表'
-              : '🧠 Semantic Annotation · Hevner Adjective Circle × GEMS Emotion Scale'}
+              ? ' 心理语义注释 · 基于 Hevner 形容词圆环 × GEMS 情绪量表'
+              : ' Semantic Annotation · Hevner Adjective Circle × GEMS Emotion Scale'}
           </span>
           <span style={{ fontSize: 10, color: theme.labelSecondaryColor }}>
             {showSemantic ? '▲' : '▼'}
@@ -870,10 +1066,10 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
               fontWeight: 700, color: theme.labelSecondaryColor, fontSize: 8.5,
             }}>
               <span>{lang === 'zh' ? '变奏' : 'Seg'}</span>
-              <span>{lang === 'zh' ? '🎨 调性→情感效价' : '🎨 Key → Valence'}</span>
-              <span>{lang === 'zh' ? '⭐ 刻度线→唤醒度' : '⭐ Ticks → Arousal'}</span>
-              <span>{lang === 'zh' ? '🔊 响度→力量感' : '🔊 Loudness → Power'}</span>
-              <span>{lang === 'zh' ? '✨ 音色→明暗感' : '✨ Timbre → Brightness'}</span>
+              <span>{lang === 'zh' ? ' 调性→情感效价' : ' Key → Valence'}</span>
+              <span>{lang === 'zh' ? '⭐ 同心环→节奏密度' : '⭐ Rings → Rhythm density'}</span>
+              <span>{lang === 'zh' ? ' 响度→力量感' : ' Loudness → Power'}</span>
+              <span>{lang === 'zh' ? ' 音色→光晕 (5档)' : ' Timbre → Halo (5 tiers)'}</span>
               <span>{lang === 'zh' ? '↕ 旋律→音域' : '↕ Melody → Register'}</span>
               <span>{lang === 'zh' ? '综合标签' : 'Overall Label'}</span>
             </div>
@@ -881,20 +1077,25 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
             {/* Data rows */}
             {glyphs.map((g, rowIdx) => {
               const isVar = g.seg.label.startsWith('V')
-              const rowBg = rowIndex => rowIndex % 2 === 0
+              const rowBg = (rowIndex: number) => rowIndex % 2 === 0
                 ? (isDark ? '#161626' : '#ffffff')
                 : (isDark ? '#191930' : '#f8fafc')
 
               return (
                 <div
                   key={g.seg.label}
+                  onClick={() => onSegSelect?.(rowIdx)}
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '36px 1fr 1.4fr 1fr 1fr 1fr 1fr',
                     gap: '0 6px',
                     padding: '5px 12px',
                     alignItems: 'center',
-                    background: rowBg(rowIdx),
+                    background: selectedSeg === rowIdx
+                      ? (isDark ? '#1e2a4a' : '#eff3ff')
+                      : rowBg(rowIdx),
+                    transition: 'background 0.15s',
+                    cursor: 'pointer',
                     borderBottom: `1px solid ${isDark ? '#232340' : '#f1f5f9'}`,
                   }}
                 >
@@ -925,7 +1126,7 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
                     bg={g.tagPower.bg} fg={g.tagPower.fg}
                   />
 
-                  {/* Timbre → brightness */}
+                  {/* Timbre → texture tier */}
                   <Chip
                     text={lang === 'zh' ? g.tagTimbre.textZh : g.tagTimbre.text}
                     bg={g.tagTimbre.bg} fg={g.tagTimbre.fg}
@@ -950,8 +1151,8 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
                     </span>
                     <span style={{ fontSize: 7.5, color: theme.labelSecondaryColor }}>
                       {lang === 'zh'
-                        ? `↑${(g.arousal*100).toFixed(0)}% ♥${(g.valence*100).toFixed(0)}%`
-                        : `↑${(g.arousal*100).toFixed(0)}% ♥${(g.valence*100).toFixed(0)}%`}
+                        ? `↑${(g.arousal*100).toFixed(0)}% ${(g.valence*100).toFixed(0)}%`
+                        : `↑${(g.arousal*100).toFixed(0)}% ${(g.valence*100).toFixed(0)}%`}
                     </span>
                   </div>
                 </div>
@@ -966,8 +1167,8 @@ export function MentalLandscapePage({ data, theme, isDark, lang }: Props) {
               lineHeight: 1.6,
             }}>
               {lang === 'zh'
-                ? '↑ 唤醒度 = onset×0.40 + RMS×0.30 + 音高×0.15 + 音色×0.15　♥ 效价 = 大调: 0.48 + 协和×0.32 + 节奏流畅×0.20 / 小调: 0.30 − 协和×0.20 + 节奏流畅×0.10　· [Yang & Chen 2012]　· 标签依据 Hevner (1936)'
-                : '↑ Arousal = onset×0.40 + RMS×0.30 + pitch×0.15 + timbre×0.15　♥ Valence = major: 0.48 + cons×0.32 + rhythm×0.20 / minor: 0.30 − cons×0.20 + rhythm×0.10　· [Yang & Chen 2012]　· Hevner (1936)'}
+                ? '↑ 唤醒度 = onset×0.40 + RMS×0.30 + 音高×0.15 + 音色×0.15　 效价 = 大调: 0.48 + 协和×0.32 + 节奏流畅×0.20 / 小调: 0.30 − 协和×0.20 + 节奏流畅×0.10　· [Yang & Chen 2012]　· 标签依据 Hevner (1936)'
+                : '↑ Arousal = onset×0.40 + RMS×0.30 + pitch×0.15 + timbre×0.15　 Valence = major: 0.48 + cons×0.32 + rhythm×0.20 / minor: 0.30 − cons×0.20 + rhythm×0.10　· [Yang & Chen 2012]　· Hevner (1936)'}
             </div>
           </>
         )}

@@ -20,6 +20,7 @@ import {
   dtwSimilarity,
 } from '../utils/pitchContour'
 import { labelColor } from './PitchContour'
+import { RingCard } from './ChromaRingPage'
 
 interface Props {
   segments: [Segment] | [Segment, Segment]
@@ -29,10 +30,14 @@ interface Props {
   onClose: () => void
 }
 
-const W     = Math.min(820, (typeof window !== 'undefined' ? window.innerWidth : 900) - 48)
-const H     = 300
-const PAD_X = 52    // room for Y labels
-const PAD_Y = 28
+// Layout constants
+const TOTAL_W  = Math.min(920, (typeof window !== 'undefined' ? window.innerWidth : 960) - 48)
+const RING_W   = 210   // chroma panel width
+const W        = TOTAL_W - RING_W - 24  // contour SVG width
+const H        = 300
+const PAD_X    = 52
+const PAD_Y    = 28
+
 
 export function ContourModal({ segments, range, theme, lang = 'zh', onClose }: Props) {
   useEffect(() => {
@@ -83,7 +88,7 @@ export function ContourModal({ segments, range, theme, lang = 'zh', onClose }: P
           padding: '20px 24px 22px',
           boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
           border: theme.cardBorder,
-          minWidth: W + 24,
+          minWidth: TOTAL_W + 24,
         }}
       >
         {/* Header */}
@@ -116,7 +121,8 @@ export function ContourModal({ segments, range, theme, lang = 'zh', onClose }: P
               {firstContour.mode === 'relative'
                 ? 'Y axis: semitones from tonic  ·  T = tonic  ·  P5 = fifth  ·  8va = octave above'
                 : 'Y axis: absolute MIDI pitch  ·  labels = C notes (octave boundaries)'}
-              {firstContour.source === 'chroma' ? '  ·  ⚠ chroma fallback — run add_pitch_contour.py for real pYIN' : ''}
+              {firstContour.source === 'score_midi' ? '  ·   source: score MIDI (highest note per beat)' : ''}
+              {firstContour.source === 'chroma' ? '  ·   chroma fallback — no pitch data available' : ''}
             </div>
           </div>
           <button
@@ -129,8 +135,11 @@ export function ContourModal({ segments, range, theme, lang = 'zh', onClose }: P
           >×</button>
         </div>
 
-        {/* SVG */}
-        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block' }}>
+        {/* Body: contour left + chroma ring right */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+
+        {/* SVG — left */}
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', flexShrink: 0 }}>
           <defs>
             <clipPath id="modal-clip">
               <rect x={PAD_X} y={PAD_Y} width={innerW} height={innerH} />
@@ -245,6 +254,27 @@ export function ContourModal({ segments, range, theme, lang = 'zh', onClose }: P
             })
           })()}
         </svg>
+
+        {/* Chroma ring — right */}
+        <div style={{
+          flexShrink: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          paddingTop: 4,
+          borderLeft: `1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)'}`,
+          paddingLeft: 16,
+        }}>
+          {segments.map(seg => (
+            <RingCard
+              key={seg.label}
+              segment={seg}
+              theme={theme}
+              isDark={isDark}
+              size={isTwoMode ? 160 : 190}
+            />
+          ))}
+        </div>
+
+        </div>{/* end flex row */}
 
         {/* Footer */}
         <div style={{

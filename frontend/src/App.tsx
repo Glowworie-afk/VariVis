@@ -13,6 +13,8 @@ import { ExtractionPanel }        from './components/ExtractionPanel'
 import { AudioPlayer }            from './components/AudioPlayer'
 import { fetchPieces, fetchFeatures, NotExtractedError, API_BASE } from './api/pieceApi'
 import type { PieceMeta }         from './api/pieceApi'
+import UploadModal                from './components/UploadModal'
+import type { UploadResult }      from './components/UploadModal'
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -125,10 +127,10 @@ const AUDIO_TABS: PieceTab[] = [
 ]
 
 const TAB_LABELS: Record<PieceTab, { zh: string; en: string; icon: string }> = {
-  corpus_view:       { zh: '焦点概览',   en: 'Focus View',    icon: '' },
-  overview:          { zh: '综合视图',  en: 'Overview',        icon: '' },
-  mentallandscape:   { zh: '心理图景',  en: 'Mental Landscape',icon: '' },
-  symbolic_heatmap:  { zh: '差异热力图', en: 'Delta Heatmap',  icon: '' },
+  corpus_view:       { zh: '焦点概览',   en: 'Focus View',     icon: '' },
+  overview:          { zh: '综合视图',   en: 'Overview',        icon: '' },
+  mentallandscape:   { zh: '心理图景',   en: 'Mental Landscape',icon: '' },
+  symbolic_heatmap:  { zh: '差异热力图', en: 'Delta Heatmap',   icon: '' },
 }
 
 // ── State types ──────────────────────────────────────────────────────
@@ -164,6 +166,12 @@ export default function App() {
   // Score panel mode: PDF (IMSLP) or MusicXML (Harmonic Function)
   const [scoreMode,  setScoreMode]  = useState<'pdf' | 'musicxml'>('pdf')
 
+  // Temporary uploaded piece (session-only, not in main list)
+  const [uploadedPiece,  setUploadedPiece]  = useState<UploadResult | null>(null)
+  const [uploadedData,   setUploadedData]   = useState<PieceData | null>(null)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadFocused,   setUploadFocused]   = useState(false)
+
   // Available MusicXML files (e.g. "WAMozart_K265.mxl")
   const [musicxmlFiles, setMusicxmlFiles] = useState<string[]>([])
 
@@ -175,19 +183,28 @@ export default function App() {
       .catch(() => {})
   }, [])
 
-  // ── Derived: XML file for focused piece ───────────────────────────
+  // ── Derived: XML file for focused piece (or uploaded temp) ──────────
   const focusedXmlFile = useMemo(() => {
+    // Uploaded piece with MXL takes priority when focused.
+    // Use mxl_stem directly — the backend guarantees the file exists in MusicXML/.
+    if (uploadFocused && uploadedPiece?.mxl_stem) {
+      return uploadedPiece.mxl_stem
+    }
     if (!focusedFile || musicxmlFiles.length === 0) return ''
     const stem = focusedFile.replace(/_\d+$/, '')
     return musicxmlFiles.find(f => f.replace(/\.[^.]+$/, '') === stem) ?? ''
-  }, [focusedFile, musicxmlFiles])
+  }, [focusedFile, musicxmlFiles, uploadFocused, uploadedPiece])
 
-  // Auto-switch back to PDF if current piece has no MusicXML
+  // Auto-switch back to PDF when the active context has no MusicXML
   useEffect(() => {
-    if (scoreMode === 'musicxml' && focusedFile && focusedXmlFile === '') {
+    if (scoreMode !== 'musicxml') return
+    if (uploadFocused) {
+      // uploaded piece: revert if no MXL
+      if (!uploadedPiece?.mxl_stem || focusedXmlFile === '') setScoreMode('pdf')
+    } else if (focusedFile && focusedXmlFile === '') {
       setScoreMode('pdf')
     }
-  }, [focusedXmlFile, focusedFile, scoreMode])
+  }, [focusedXmlFile, focusedFile, scoreMode, uploadFocused, uploadedPiece])
 
   // ── Initial load ──────────────────────────────────────────────────
 
@@ -241,6 +258,46 @@ export default function App() {
       const remaining = loadedPieces.filter(p => p.meta.file_name !== fileName)
       setFocusedFile(remaining[0]?.meta.file_name ?? null)
     }
+  }
+
+  async function handleUploadSuccess(result: UploadResult) {
+    setUploadedPiece(result)
+    setShowUploadModal(false)
+    setUploadFocused(true)
+    // If MusicXML was included, switch the right panel immediately (focusedXmlFile now
+    // resolves directly from mxl_stem, no list lookup needed). Also refresh the list
+    // in the background so section pills and regular-piece matching stay up to date.
+    if (result.mxl_stem) {
+      setScoreMode('musicxml')   // synchronous — same batch as the state above
+      fetch(`${API_BASE}/musicvis/list`)
+        .then(r => r.json())
+        .then(d => setMusicxmlFiles(d.files ?? []))
+        .catch(() => {})
+    }
+    // Fetch the feature data that was just written by the backend
+    try {
+      const data = await fetchFeatures(result.temp_name)
+      setUploadedData(data)
+    } catch (e) {
+      console.error('Failed to load uploaded feature data:', e)
+    }
+  }
+
+  function removeUploadedPiece() {
+    // Ask backend to delete temp files
+    if (uploadedPiece) {
+      fetch(`${API_BASE}/upload/temp/${uploadedPiece.temp_name}`, { method: 'DELETE' }).catch(() => {})
+    }
+    setUploadedPiece(null)
+    setUploadedData(null)
+    setUploadFocused(false)
+    // Revert right panel to PDF if it was showing the now-removed MXL
+    setScoreMode('pdf')
+    // Refresh MXL list to remove the deleted temp entry
+    fetch(`${API_BASE}/musicvis/list`)
+      .then(r => r.json())
+      .then(d => setMusicxmlFiles(d.files ?? []))
+      .catch(() => {})
   }
 
   function onExtractionDone(fileName: string) {
@@ -300,6 +357,61 @@ export default function App() {
           {listError && (
             <div style={{ fontSize: 11, color: 'var(--vv-red)', padding: '6px 4px' }}>{listError}</div>
           )}
+          {/* Upload button */}
+          <button
+            onClick={() => setShowUploadModal(true)}
+            style={{
+              fontSize: 10, padding: '5px 10px', borderRadius: 7,
+              border: '1.5px dashed #cbd5e1', background: 'transparent',
+              color: '#64748b', cursor: 'pointer', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 5,
+              marginBottom: 4,
+            }}
+          >
+            <span style={{ fontSize: 13 }}>⬆</span>
+            {lang === 'zh' ? '上传乐曲' : 'Upload piece'}
+          </button>
+
+          {/* Temporary uploaded piece card */}
+          {uploadedPiece && (
+            <div
+              onClick={() => { setUploadFocused(true); setFocusedFile(null) }}
+              style={{
+                borderRadius: 7,
+                border: `1.5px solid ${uploadFocused ? '#6366f1' : '#e2e8f0'}`,
+                background:   uploadFocused ? '#eef2ff' : '#f8fafc',
+                padding:      '6px 9px',
+                cursor:       'pointer',
+                display:      'flex', alignItems: 'center', gap: 6,
+                marginBottom: 4,
+              }}
+            >
+              <span style={{ fontSize: 11, color: '#6366f1' }}>⬡</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: '#334155',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {uploadedPiece.music_name}
+                </div>
+                <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 1 }}>
+                  {lang === 'zh' ? '临时上传' : 'Temp upload'} · {uploadedPiece.n_segments} segs
+                </div>
+              </div>
+              {uploadedData === null && (
+                <span style={{ fontSize: 9, color: '#94a3b8' }}>…</span>
+              )}
+              <button
+                onClick={e => { e.stopPropagation(); removeUploadedPiece() }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 13, color: '#94a3b8', padding: '0 2px', lineHeight: 1,
+                }}
+                title="Remove"
+              >×</button>
+            </div>
+          )}
+
           {!listLoading && !listError && COMPOSER_GROUPS.map(({ key, label, zh }) => {
             const groups = groupPieces(pieces, key)
             if (groups.length === 0) return null
@@ -348,6 +460,7 @@ export default function App() {
                                 className={`vv-tree-version${isFocused ? ' focused' : isLoaded ? ' loaded' : ''}`}
                                 title={p.file_name + (p.has_midi ? ' · MIDI available' : '')}
                                 onClick={() => {
+                                  setUploadFocused(false)
                                   if (isLoaded) setFocusedFile(p.file_name)
                                   else { loadPiece(p); setFocusedFile(p.file_name) }
                                 }}
@@ -376,15 +489,34 @@ export default function App() {
 
         {/* ── Delta Heatmap (remaining space) ── */}
         <div style={{ flex: '0 0 auto', overflow: 'hidden', display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--vv-border)' }}>
-          {focusedPiece?.viewState === 'ready' ? (
+          {uploadFocused && uploadedPiece ? (
+            uploadedPiece.available_views.includes('symbolic_heatmap') ? (
+              <SymbolicHeatmapPage fileName={uploadedPiece.temp_name} musicName={uploadedPiece.music_name} />
+            ) : (
+              /* audio-only upload — no MXL data source */
+              <div style={{ padding: '28px 20px', textAlign: 'center', fontSize: 11, color: 'var(--vv-text-3)', lineHeight: 1.7 }}>
+                <div style={{ fontSize: 15, marginBottom: 6 }}>📊</div>
+                <div style={{ fontWeight: 600, color: 'var(--vv-text-2)', marginBottom: 4 }}>No data source</div>
+                <div>Delta Heatmap requires a MusicXML file.</div>
+              </div>
+            )
+          ) : focusedPiece?.viewState === 'ready' ? (
             <SymbolicHeatmapPage fileName={focusedPiece.meta.file_name} />
           ) : (
             <div style={{ padding: 40, fontSize: 11, color: 'var(--vv-text-3)', textAlign: 'center' }}>
-              {lang === 'zh' ? '选择乐曲以查看热力图' : 'Select a piece to view the heatmap'}
+              Select a piece to view the heatmap
             </div>
           )}
         </div>
       </aside>
+
+      {/* ── Upload Modal ── */}
+      {showUploadModal && (
+        <UploadModal
+          onClose={() => setShowUploadModal(false)}
+          onSuccess={handleUploadSuccess}
+        />
+      )}
 
       {/* ════ MAIN ════ */}
       <main className="vv-main" style={scoreMode === 'musicxml' ? { display: 'none' } : {}}>
@@ -410,8 +542,19 @@ export default function App() {
         )}
 
 
-        {/* Focus view */}
-        {activeTab === 'corpus_view' && focusedPiece?.viewState === 'ready' && focusedPiece.data && (
+        {/* Uploaded piece view */}
+        {uploadFocused && uploadedPiece && (
+          <UploadedPieceView
+            result={uploadedPiece}
+            data={uploadedData}
+            theme={theme}
+            lang={lang}
+            onRemove={removeUploadedPiece}
+          />
+        )}
+
+        {/* Focus view (regular pieces) */}
+        {!uploadFocused && activeTab === 'corpus_view' && focusedPiece?.viewState === 'ready' && focusedPiece.data && (
           <PieceSection
             key={focusedPiece.meta.file_name}
             loadedPiece={focusedPiece}
@@ -425,8 +568,8 @@ export default function App() {
           />
         )}
 
-        {/* Other tabs */}
-        {activeTab !== 'corpus_view' && focusedPiece && (
+        {/* Other tabs (regular pieces) */}
+        {!uploadFocused && activeTab !== 'corpus_view' && focusedPiece && (
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <PieceSection
               key={focusedPiece.meta.file_name + activeTab}
@@ -479,7 +622,7 @@ export default function App() {
                   color:      scoreMode === 'musicxml' ? '#fff'    : '#64748b',
                 }}
               >
-                MusicXML
+                Harmonic
               </button>
             )}
             <div style={{ flex: 1 }} />
@@ -492,7 +635,35 @@ export default function App() {
           </div>
           {/* Score content */}
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-            {scoreMode === 'pdf' ? (
+            {uploadFocused && uploadedPiece ? (
+              /* ── Uploaded piece: Score tab shows uploaded PDF or "no data source" ── */
+              scoreMode === 'pdf' ? (
+                uploadedPiece.pdf_stem ? (
+                  <iframe
+                    src={`${API_BASE}/upload/temp_pdf/${encodeURIComponent(uploadedPiece.pdf_stem)}#toolbar=1&navpanes=0`}
+                    style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                    title="Uploaded PDF Score"
+                  />
+                ) : (
+                  <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--vv-text-3)', fontSize: 11, lineHeight: 1.8 }}>
+                    <div style={{ fontSize: 20, marginBottom: 8 }}>📄</div>
+                    <div style={{ fontWeight: 600, color: 'var(--vv-text-2)', marginBottom: 4 }}>No data source</div>
+                    <div>Upload a PDF score to view it here.</div>
+                  </div>
+                )
+              ) : (
+                /* MusicXML mode for uploaded piece */
+                uploadedPiece.mxl_stem ? (
+                  <MusicVisPage theme={theme} lang={lang} xmlFile={uploadedPiece.mxl_stem} />
+                ) : (
+                  <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--vv-text-3)', fontSize: 11, lineHeight: 1.8 }}>
+                    <div style={{ fontSize: 20, marginBottom: 8 }}>🎵</div>
+                    <div style={{ fontWeight: 600, color: 'var(--vv-text-2)', marginBottom: 4 }}>No data source</div>
+                    <div>Score View requires a MusicXML file.</div>
+                  </div>
+                )
+              )
+            ) : scoreMode === 'pdf' ? (
               focusedPiece?.viewState === 'ready' && focusedPiece.data ? (
                 <ScorePage
                   data={focusedPiece.data}
@@ -504,7 +675,7 @@ export default function App() {
                 />
               ) : (
                 <div className="vv-score-panel-empty">
-                  <span>{lang === 'zh' ? '乐谱' : 'Score'}</span>
+                  <span>Score</span>
                 </div>
               )
             ) : (
@@ -586,9 +757,6 @@ function PieceSection({
             <span className="vv-meta-tag">{data.metadata.variation_num} var.</span>
             <span className="vv-meta-sep">·</span>
             <span className="vv-meta-tag">{durationLabel(data)}</span>
-            <span className={`vv-badge ${hasPyin ? 'vv-badge-cyan' : 'vv-badge-amber'}`}>
-              {hasPyin ? 'pYIN' : 'chroma'}
-            </span>
           </div>
         )}
       </div>
@@ -706,6 +874,7 @@ function PieceSection({
         {activeTab === 'symbolic_heatmap' && (
           <SymbolicHeatmapPage fileName={meta.file_name} />
         )}
+
         {viewState === 'ready' && data && activeTab === 'overview' && (
           <OverviewPage data={data} theme={theme} isDark={false} lang={lang} />
         )}
@@ -729,4 +898,201 @@ function PieceSection({
       </div>
     </div>
   )
+}
+
+// ── UploadedPieceView ────────────────────────────────────────────────
+// Shown in the main panel when an uploaded (temporary) piece is focused.
+// Shows the SAME four tabs as a regular piece.
+// Views with no matching data source show a "no data" notice instead of crashing.
+
+interface UploadedPieceViewProps {
+  result:   UploadResult
+  data:     PieceData | null
+  theme:    ReturnType<typeof getTheme>
+  lang:     Lang
+  onRemove: () => void
+}
+
+/** Placeholder shown when a view's required data source is absent. */
+function NoDataNotice({ lang, needsAudio, needsMxl }: { lang: Lang; needsAudio?: boolean; needsMxl?: boolean }) {
+  const zh = lang === 'zh'
+  const src = needsAudio && needsMxl
+    ? (zh ? 'MusicXML + 音频' : 'MusicXML + audio')
+    : needsAudio
+      ? (zh ? '音频文件' : 'audio file')
+      : (zh ? 'MusicXML 文件' : 'MusicXML file')
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      height: '100%', gap: 8, color: 'var(--vv-text-3)',
+    }}>
+      <span style={{ fontSize: 28, opacity: 0.3 }}>⊘</span>
+      <div style={{ fontSize: 11, fontWeight: 600 }}>
+        {zh ? '暂无对应数据源' : 'No data source available'}
+      </div>
+      <div style={{ fontSize: 10, opacity: 0.7 }}>
+        {zh ? `此视图需要上传 ${src}` : `This view requires an uploaded ${src}`}
+      </div>
+    </div>
+  )
+}
+
+function UploadedPieceView({
+  result, data, theme, lang, onRemove,
+}: UploadedPieceViewProps) {
+  const hasMxl   = result.mxl_stem !== null
+  const hasAudio = data !== null && (data.segments[0]?.features?.rms_mean !== undefined)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--vv-bg)' }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
+        padding: '6px 14px', borderBottom: '1px solid var(--vv-border)', background: 'var(--vv-surface)',
+      }}>
+        <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: 'linear-gradient(180deg,#6366f1,#8b5cf6)' }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--vv-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {result.music_name}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--vv-text-3)', marginTop: 1, display: 'flex', gap: 5, alignItems: 'center' }}>
+            <span>Temp upload</span>
+            <span>·</span>
+            <span>{result.n_segments} segs</span>
+            {hasMxl   && <span style={{ background: '#6366f1', color: '#fff', borderRadius: 3, padding: '0 4px', fontSize: 9, fontWeight: 700 }}>MXL</span>}
+            {hasAudio && <span style={{ background: '#10b981', color: '#fff', borderRadius: 3, padding: '0 4px', fontSize: 9, fontWeight: 700 }}>AUDIO</span>}
+          </div>
+        </div>
+        <button className="vv-remove-btn" onClick={onRemove} title="Remove upload">×</button>
+      </div>
+
+      {/* ── Content ── */}
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {data === null && (
+          <div className="vv-loading">Processing…</div>
+        )}
+
+        {data !== null && !hasAudio && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ textAlign: 'center', color: 'var(--vv-text-3)', fontSize: 11, lineHeight: 1.8 }}>
+              <div style={{ fontSize: 22, marginBottom: 8, opacity: 0.3 }}>⊘</div>
+              <div style={{ fontWeight: 600, color: 'var(--vv-text-2)', marginBottom: 4 }}>No data source</div>
+              <div>This view requires an audio file.</div>
+            </div>
+          </div>
+        )}
+
+        {data !== null && hasAudio && (
+          <CorpusStyleView
+            data={data} theme={theme} isDark={false} lang={lang}
+            fileName={result.temp_name} hasMidi={false}
+            onSeekMain={() => {}}
+            playMain={() => {}}
+            pauseMain={() => {}}
+            mainTime={0}
+            isMainPlaying={false}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Lightweight segment summary — no heavy chart components, never crashes. */
+function UploadSegmentSummary({
+  data, labels, hasAudio, hasMxl, lang,
+}: {
+  data:     PieceData
+  labels:   string[]
+  hasAudio: boolean
+  hasMxl:   boolean
+  lang:     Lang
+}) {
+  const segs = data.segments
+  const totalSec = data.metadata?.total_duration_sec ?? 0
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
+
+  return (
+    <div style={{ fontSize: 11, color: 'var(--vv-text)' }}>
+      {/* Summary row */}
+      <div style={{
+        display: 'flex', gap: 16, marginBottom: 14,
+        padding: '10px 14px', borderRadius: 8,
+        background: 'var(--vv-elevated)', border: '1px solid var(--vv-border)',
+        flexWrap: 'wrap',
+      }}>
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--vv-text-3)', marginBottom: 2, letterSpacing: 0.5, textTransform: 'uppercase' }}>Segments</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--vv-text)' }}>{segs.length}</div>
+        </div>
+        {totalSec > 0 && (
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--vv-text-3)', marginBottom: 2, letterSpacing: 0.5, textTransform: 'uppercase' }}>Duration</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--vv-text)' }}>{fmt(totalSec)}</div>
+          </div>
+        )}
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--vv-text-3)', marginBottom: 2, letterSpacing: 0.5, textTransform: 'uppercase' }}>Sources</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {hasMxl   && <span style={{ background: '#6366f1', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>MXL</span>}
+            {hasAudio && <span style={{ background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>Audio</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Per-segment table */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+          <thead>
+            <tr style={{ background: 'var(--vv-elevated)' }}>
+              <th style={thStyle}>#</th>
+              <th style={thStyle}>Label</th>
+              {hasAudio && <th style={thStyle}>Start</th>}
+              {hasAudio && <th style={thStyle}>Duration</th>}
+              {hasAudio && <th style={thStyle}>RMS</th>}
+              {hasAudio && <th style={thStyle}>Tempo (BPM)</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {segs.map((seg, i) => {
+              const f = seg.features ?? {}
+              const rms   = typeof f.rms_mean      === 'number' ? f.rms_mean.toFixed(4)      : '—'
+              const tempo = typeof f.tempo_mean    === 'number' ? f.tempo_mean.toFixed(1)     : '—'
+              const start = typeof seg.start_time  === 'number' ? fmt(seg.start_time)         : '—'
+              const dur   = typeof seg.duration    === 'number' ? `${seg.duration.toFixed(1)}s` : '—'
+              const label = labels?.[i] ?? seg.label ?? `S${i + 1}`
+              return (
+                <tr key={i} style={{ borderBottom: '1px solid var(--vv-border)' }}>
+                  <td style={tdStyle}>{i + 1}</td>
+                  <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--vv-text)' }}>{label}</td>
+                  {hasAudio && <td style={tdStyle}>{start}</td>}
+                  {hasAudio && <td style={tdStyle}>{dur}</td>}
+                  {hasAudio && <td style={tdStyle}>{rms}</td>}
+                  {hasAudio && <td style={tdStyle}>{tempo}</td>}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {!hasAudio && (
+        <div style={{ marginTop: 14, padding: '8px 12px', borderRadius: 6, background: 'var(--vv-elevated)', fontSize: 10, color: 'var(--vv-text-3)' }}>
+          {lang === 'zh'
+            ? '上传音频文件后可查看音频特征（RMS、速度等）'
+            : 'Upload an audio file to view audio features (RMS, tempo, etc.)'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const thStyle: React.CSSProperties = {
+  padding: '5px 10px', textAlign: 'left', fontWeight: 700,
+  fontSize: 9, color: 'var(--vv-text-3)', letterSpacing: 0.5, textTransform: 'uppercase',
+  borderBottom: '1px solid var(--vv-border)',
+}
+const tdStyle: React.CSSProperties = {
+  padding: '5px 10px', color: 'var(--vv-text-2)', fontFamily: 'monospace',
 }

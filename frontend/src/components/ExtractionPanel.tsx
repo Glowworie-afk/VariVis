@@ -21,8 +21,8 @@ interface Props {
 type Phase = 'idle' | 'extracting' | 'pyin' | 'done' | 'error'
 
 const STEP_LABEL: Record<string, string> = {
-  extract: '⚙️  Step 1 / 2 — Extracting audio features (librosa)…',
-  pyin:    '🎵  Step 2 / 2 — Tracking melody pitch (pYIN + KS key detection)…',
+  extract: '  Step 1 / 2 — Extracting audio features (librosa)…',
+  pyin:    '  Step 2 / 2 — Tracking melody pitch (pYIN + KS key detection)…',
 }
 
 export function ExtractionPanel({ piece, theme, onDone }: Props) {
@@ -53,13 +53,13 @@ export function ExtractionPanel({ piece, theme, onDone }: Props) {
           break
         case 'done':
           setPhase('done')
-          setLogs(l => [...l, '✅  Done! Loading visualisation…'])
+          setLogs(l => [...l, '  Done! Loading visualisation…'])
           setTimeout(onDone, 800)
           break
         case 'error':
           setPhase('error')
           setErrMsg(evt.error ?? 'Unknown error')
-          setLogs(l => [...l, `❌  ${evt.error}`])
+          setLogs(l => [...l, `  ${evt.error}`])
           break
       }
     })

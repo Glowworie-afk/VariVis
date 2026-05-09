@@ -11,11 +11,10 @@
  * Click a card to open the full ContourModal (single or overlay).
  */
 
-import { useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
 import type { Lang } from '../App'
-import { API_BASE } from '../api/pieceApi'
 import {
   getContourData,
   normaliseContour,
@@ -34,6 +33,86 @@ const PAD_R  = 6
 const PAD_T  = 6
 const PAD_B  = 6
 
+// Circle of fifths order (semitones): C G D A E B F# C# Ab Eb Bb F
+const COF_ORDER = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]
+
+/** Build a 12-bin pitch-class histogram from beat_midi values.
+ *  Pass currentBeat=null for the full-segment static view. */
+function buildChromaHist(
+  beatMidi: number[],
+  currentBeat: number | null,
+  windowSize = 8,
+): number[] {
+  const hist = new Array(12).fill(0)
+  const beats = currentBeat === null
+    ? beatMidi
+    : (() => {
+        const lo = Math.max(0, Math.floor(currentBeat) - Math.floor(windowSize / 2))
+        const hi = Math.min(beatMidi.length, lo + windowSize)
+        return beatMidi.slice(lo, hi)
+      })()
+  beats.forEach(m => {
+    if (m > 0) hist[((Math.round(m) % 12) + 12) % 12]++
+  })
+  return hist
+}
+
+/** Mini chroma ring rendered as an SVG <g>, placed in card top-right. */
+function MiniChromaRing({
+  cx, cy, r, histogram, isDark, isLive,
+}: {
+  cx: number; cy: number; r: number
+  histogram: number[]; isDark: boolean; isLive: boolean
+}) {
+  const maxVal = Math.max(...histogram, 1)
+  const N = 12
+  const innerR = r * 0.32
+
+  return (
+    <g>
+      {/* Background disc */}
+      <circle cx={cx} cy={cy} r={r}
+        fill={isDark ? 'rgba(15,23,42,0.72)' : 'rgba(248,250,252,0.80)'}
+        stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}
+        strokeWidth={0.6}
+      />
+
+      {/* 12 wedge bars */}
+      {COF_ORDER.map((pc, i) => {
+        const angle = (i / N) * 2 * Math.PI - Math.PI / 2
+        const val   = histogram[pc] / maxVal
+        const outerR = innerR + val * (r - innerR - 1)
+        const half  = Math.PI / N * 0.72
+        const cos0  = Math.cos(angle - half), sin0 = Math.sin(angle - half)
+        const cos1  = Math.cos(angle + half), sin1 = Math.sin(angle + half)
+        const hue   = pc * 30
+        const pts   = [
+          `${cx + cos0 * innerR},${cy + sin0 * innerR}`,
+          `${cx + cos1 * innerR},${cy + sin1 * innerR}`,
+          `${cx + cos1 * outerR},${cy + sin1 * outerR}`,
+          `${cx + cos0 * outerR},${cy + sin0 * outerR}`,
+        ].join(' ')
+        return (
+          <polygon key={pc} points={pts}
+            fill={`hsl(${hue},65%,54%)`}
+            opacity={val > 0.01 ? 0.88 : 0.15}
+          />
+        )
+      })}
+
+      {/* Inner hole */}
+      <circle cx={cx} cy={cy} r={innerR}
+        fill={isDark ? 'rgba(15,23,42,0.85)' : 'rgba(248,250,252,0.90)'}
+      />
+
+      {/* Live pulse dot */}
+      {isLive && (
+        <circle cx={cx} cy={cy} r={2.5} fill="#10b981" opacity={0.9}/>
+      )}
+    </g>
+  )
+}
+
 // Ticks shown at card size (subset of full set)
 const CARD_TICKS: { st: number; label: string }[] = [
   { st: 24, label: '15va' },
@@ -51,15 +130,26 @@ interface CardProps {
   isDark:  boolean
   isPrimary:   boolean
   isSecondary: boolean
-  isPlaying:   boolean
-  onPlayPause: (e: React.MouseEvent) => void
   onClick: () => void
+  /** When true the chart SVG stretches to fill the card width */
+  fillWidth?: boolean
 }
 
-function ContourCard({ segment, range, theme, isDark, isPrimary, isSecondary, isPlaying, onPlayPause, onClick }: CardProps) {
+export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecondary, onClick, fillWidth }: CardProps) {
   const cd     = useMemo(() => getContourData(segment), [segment])
   const norm   = useMemo(() => normaliseContour(cd.values, range), [cd.values, range])
   const col    = labelColor(segment.index)
+
+  // ── Static chroma ring ───────────────────────────────────────────
+  const chromaHist: number[] = useMemo(() => {
+    const ch = segment.features.chroma_chromatic
+    return Array.isArray(ch) && ch.length === 12 ? ch : new Array(12).fill(0)
+  }, [segment])
+
+  // Ring placement: top-right corner of SVG
+  const RING_R  = 22
+  const RING_CX = CW - PAD_R - RING_R - 2
+  const RING_CY = PAD_T + RING_R + 2
 
   const innerW = CW - PAD_L - PAD_R
   const innerH = CH - PAD_T - PAD_B
@@ -125,34 +215,15 @@ function ContourCard({ segment, range, theme, isDark, isPrimary, isSecondary, is
           }}>~chroma</span>
         )}
 
-        {/* Play button */}
-        <button
-          onClick={onPlayPause}
-          title={isPlaying ? 'Pause' : 'Play'}
-          style={{
-            marginLeft: 'auto',
-            width: 22, height: 22,
-            borderRadius: '50%',
-            border: `1.5px solid ${isPlaying ? col : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)')}`,
-            background: isPlaying ? `${col}22` : 'transparent',
-            color: isPlaying ? col : theme.labelSecondaryColor,
-            cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 9, lineHeight: 1,
-            padding: 0,
-            flexShrink: 0,
-            transition: 'all 0.15s',
-          }}
-        >
-          {isPlaying ? '⏸' : '▶'}
-        </button>
       </div>
 
       {/* Chart SVG */}
       <svg
-        width={CW} height={CH}
+        width={fillWidth ? '100%' : CW}
+        height={CH}
         viewBox={`0 0 ${CW} ${CH}`}
         style={{ display: 'block', overflow: 'visible' }}
+        preserveAspectRatio="none"
       >
         <defs>
           <clipPath id={`cc-clip-${segment.label}-${segment.index}`}>
@@ -208,6 +279,14 @@ function ContourCard({ segment, range, theme, isDark, isPrimary, isSecondary, is
             clipPath={`url(#cc-clip-${segment.label}-${segment.index})`}
           />
         )}
+
+        {/* Chroma ring — top-right corner */}
+        <MiniChromaRing
+          cx={RING_CX} cy={RING_CY} r={RING_R}
+          histogram={chromaHist}
+          isDark={isDark}
+          isLive={false}
+        />
       </svg>
     </div>
   )
@@ -248,62 +327,22 @@ function ContourLegend({ theme, isDark }: { theme: ThemeTokens; isDark: boolean 
 // ── Main page ──────────────────────────────────────────────────────
 
 interface Props {
-  data:        PieceData
-  theme:       ThemeTokens
-  isDark:      boolean
-  lang:        Lang
-  onSeekMain?: (sec: number) => void
+  data:         PieceData
+  theme:        ThemeTokens
+  isDark:       boolean
+  lang:         Lang
+  selectedSeg?: number | null
 }
 
-export function PitchContourPage({ data, theme, isDark, lang, onSeekMain }: Props) {
-  const { segments, metadata } = data
+export function PitchContourPage({
+  data, theme, isDark, lang,
+  selectedSeg,
+}: Props) {
+  const { segments } = data
 
   const [primaryIdx,   setPrimaryIdx]   = useState<number | null>(null)
   const [secondaryIdx, setSecondaryIdx] = useState<number | null>(null)
   const [modalOpen,    setModalOpen]    = useState(false)
-  const [playingIdx,   setPlayingIdx]   = useState<number | null>(null)
-
-  const audioRef   = useRef<HTMLAudioElement | null>(null)
-  const endSecRef  = useRef<number>(0)
-
-  const audioUrl = `${API_BASE}/audio/${encodeURIComponent(metadata.file_name)}?folder=${encodeURIComponent(metadata.folder)}`
-
-  const handlePlayPause = useCallback((e: React.MouseEvent, idx: number) => {
-    e.stopPropagation()
-    const seg = segments[idx]
-
-    // Same segment → toggle pause/resume
-    if (playingIdx === idx && audioRef.current) {
-      if (audioRef.current.paused) {
-        audioRef.current.play()
-      } else {
-        audioRef.current.pause()
-        setPlayingIdx(null)
-      }
-      return
-    }
-
-    // Different segment → create / reuse audio element
-    if (!audioRef.current) {
-      audioRef.current = new Audio(audioUrl)
-      audioRef.current.addEventListener('timeupdate', () => {
-        if (audioRef.current && audioRef.current.currentTime >= endSecRef.current) {
-          audioRef.current.pause()
-          setPlayingIdx(null)
-        }
-      })
-      audioRef.current.addEventListener('ended', () => setPlayingIdx(null))
-    }
-
-    endSecRef.current = seg.end_sec
-    audioRef.current.src = audioUrl
-    audioRef.current.currentTime = seg.start_sec
-    audioRef.current.play()
-    setPlayingIdx(idx)
-
-    // Sync the main player bar to this segment's start position
-    onSeekMain?.(seg.start_sec)
-  }, [playingIdx, segments, audioUrl, onSeekMain])
 
   const range = useMemo(() => globalContourRange(segments), [segments])
 
@@ -351,18 +390,25 @@ export function PitchContourPage({ data, theme, isDark, lang, onSeekMain }: Prop
         gap: 10,
       }}>
         {segments.map((seg, i) => (
-          <ContourCard
+          <div
             key={seg.label}
-            segment={seg}
-            range={range}
-            theme={theme}
-            isDark={isDark}
-            isPrimary={i === primaryIdx}
-            isSecondary={i === secondaryIdx}
-            isPlaying={i === playingIdx}
-            onPlayPause={e => handlePlayPause(e, i)}
-            onClick={() => handleClick(i)}
-          />
+            style={{
+              borderRadius: 10,
+              boxShadow: selectedSeg === seg.index
+                ? '0 0 0 3px #4361EE, 0 0 14px rgba(67,97,238,0.2)'
+                : undefined,
+            }}
+          >
+            <ContourCard
+              segment={seg}
+              range={range}
+              theme={theme}
+              isDark={isDark}
+              isPrimary={i === primaryIdx}
+              isSecondary={i === secondaryIdx}
+              onClick={() => handleClick(i)}
+            />
+          </div>
         ))}
       </div>
 

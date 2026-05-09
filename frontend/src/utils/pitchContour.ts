@@ -57,7 +57,7 @@ export type ContourMode = 'relative' | 'absolute'
 export interface ContourData {
   values: number[]          // raw array, ready for normalisation
   mode: ContourMode
-  source: 'beat_relative' | 'compressed_relative' | 'beat_abs' | 'compressed_abs' | 'chroma'
+  source: 'score_midi' | 'beat_relative' | 'compressed_relative' | 'beat_abs' | 'compressed_abs' | 'chroma'
   tonicName?: string        // present in relative mode
   isMajor?: boolean
   ksCorrelation?: number
@@ -131,33 +131,46 @@ function contourFromChroma(chromaCof: number[][]): number[] {
 export function getContourData(segment: Segment): ContourData {
   const pc = segment.features.pitch_contour
 
-  if (pc && !pc.error) {
-    const meta = {
-      tonicName:     pc.tonic_name,
-      isMajor:       pc.is_major,
-      // key_correlation is written by updated backend; fall back to ks_correlation for old JSON
-      ksCorrelation: pc.key_correlation ?? pc.ks_correlation,
+  if (pc) {
+    // 1. Score-MIDI derived (best — accurate, score-based)
+    if (pc.score_beat_midi_relative && pc.score_beat_midi_relative.length >= 4) {
+      return {
+        values:       pc.score_beat_midi_relative,
+        mode:         'relative',
+        source:       'score_midi',
+        tonicName:    pc.score_tonic_name,
+        isMajor:      pc.score_is_major,
+        ksCorrelation: pc.score_key_correlation,
+      }
     }
 
-    // 1. Beat-aligned relative (best)
-    if (pc.beat_midi_relative?.length >= 4) {
-      return { values: pc.beat_midi_relative, mode: 'relative', source: 'beat_relative', ...meta }
-    }
-    // 2. Compressed relative
-    if (pc.midi_relative?.length >= 4) {
-      return { values: pc.midi_relative, mode: 'relative', source: 'compressed_relative', ...meta }
-    }
-    // 3. Beat-aligned absolute
-    if (pc.beat_midi?.length >= 4) {
-      return { values: pc.beat_midi, mode: 'absolute', source: 'beat_abs' }
-    }
-    // 4. Compressed absolute
-    if (pc.midi?.length >= 4) {
-      return { values: pc.midi, mode: 'absolute', source: 'compressed_abs' }
+    if (!pc.error) {
+      const meta = {
+        tonicName:     pc.tonic_name,
+        isMajor:       pc.is_major,
+        ksCorrelation: pc.key_correlation ?? pc.ks_correlation,
+      }
+
+      // 2. pYIN beat-aligned relative (legacy)
+      if (pc.beat_midi_relative && pc.beat_midi_relative.length >= 4) {
+        return { values: pc.beat_midi_relative, mode: 'relative', source: 'beat_relative', ...meta }
+      }
+      // 3. pYIN compressed relative (legacy)
+      if (pc.midi_relative && pc.midi_relative.length >= 4) {
+        return { values: pc.midi_relative, mode: 'relative', source: 'compressed_relative', ...meta }
+      }
+      // 4. pYIN beat-aligned absolute (legacy)
+      if (pc.beat_midi && pc.beat_midi.length >= 4) {
+        return { values: pc.beat_midi, mode: 'absolute', source: 'beat_abs' }
+      }
+      // 5. pYIN compressed absolute (legacy)
+      if (pc.midi && pc.midi.length >= 4) {
+        return { values: pc.midi, mode: 'absolute', source: 'compressed_abs' }
+      }
     }
   }
 
-  // 5. Chroma fallback
+  // 6. Chroma fallback
   return {
     values: contourFromChroma(segment.features.compressed.chroma_cof),
     mode: 'absolute',

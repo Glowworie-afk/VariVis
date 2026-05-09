@@ -17,6 +17,7 @@ export interface PieceMeta {
   period:     string
   folder:     string
   extracted:  boolean   // true = JSON already exists in backend/features/
+  has_midi:   boolean   // true = matching .mid found in TV_MIDI/ via K-number
 }
 
 export type ExtractionStep = 'extract' | 'pyin'
@@ -138,8 +139,50 @@ export interface MidiAnalysisData {
   rhy_32nd?:     number[]
 }
 
-export async function fetchMidiAnalysis(fileName: string): Promise<MidiAnalysisData> {
-  const res = await fetch(`${BASE}/midi/${encodeURIComponent(fileName)}`)
+// ── MIDI Notes (piano roll) ────────────────────────────────────────────
+
+export interface MidiNote {
+  pitch:     number   // MIDI 0-127
+  beat:      number   // start beat
+  dur_beats: number   // duration in beats
+  velocity:  number   // 0-127
+  seg:       number   // segment index
+}
+
+export interface MidiSegBoundary {
+  idx:        number
+  label:      string
+  beat_start: number
+  beat_end:   number
+}
+
+export interface MidiNotesData {
+  matched:       boolean
+  message?:      string
+  file_name:     string
+  beats_per_bar: number
+  total_beats:   number
+  total_bars:    number
+  segments:      MidiSegBoundary[]
+  notes:         MidiNote[]
+}
+
+export async function fetchMidiNotes(
+  fileName: string,
+  nVariations?: number,
+): Promise<MidiNotesData> {
+  const qs  = nVariations != null ? `?n_variations=${nVariations}` : ''
+  const res = await fetch(`${BASE}/midi/notes/${encodeURIComponent(fileName)}${qs}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+export async function fetchMidiAnalysis(
+  fileName: string,
+  nVariations?: number,   // pass data.metadata.variation_num to override MIDI segmentation
+): Promise<MidiAnalysisData> {
+  const qs  = nVariations != null ? `?n_variations=${nVariations}` : ''
+  const res = await fetch(`${BASE}/midi/${encodeURIComponent(fileName)}${qs}`)
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
   return res.json()
 }

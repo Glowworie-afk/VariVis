@@ -17,28 +17,64 @@ interface Props {
   src: string
   theme: ThemeTokens
   onTimeUpdate?: (time: number) => void
+  /** Assigns a seekTo(sec) function — seeks WITHOUT auto-playing */
   seekToRef?: React.MutableRefObject<((sec: number) => void) | null>
+  /** Assigns a pause() function so external players can stop this player */
+  pauseRef?: React.MutableRefObject<(() => void) | null>
+  /** Assigns a play() function so external code can start this player */
+  playRef?: React.MutableRefObject<(() => void) | null>
+  /** Called whenever playing state changes */
+  onPlayingChange?: (isPlaying: boolean) => void
 }
 
-export function AudioPlayer({ src, theme, onTimeUpdate, seekToRef }: Props) {
+export function AudioPlayer({ src, theme, onTimeUpdate, seekToRef, pauseRef, playRef, onPlayingChange }: Props) {
   const audioRef    = useRef<HTMLAudioElement>(null)
   const [playing,   setPlaying]   = useState(false)
   const [current,   setCurrent]   = useState(0)
   const [duration,  setDuration]  = useState(0)
   const [loading,   setLoading]   = useState(true)
 
-  // Expose seekTo via ref so parent can seek programmatically
+  // Expose seekTo — seek only, no auto-play (prevents simultaneous playback)
   useEffect(() => {
     if (!seekToRef) return
     seekToRef.current = (sec: number) => {
       const el = audioRef.current
       if (!el) return
       el.currentTime = sec
-      el.play().catch(() => {})
-      setPlaying(true)
+      // Do NOT call el.play() here — caller controls whether to play
     }
     return () => { if (seekToRef) seekToRef.current = null }
   }, [seekToRef])
+
+  // Keep a stable ref to onPlayingChange to avoid stale closures inside effects
+  const onPlayingChangeRef = useRef(onPlayingChange)
+  useEffect(() => { onPlayingChangeRef.current = onPlayingChange })
+
+  // Expose pause() so other players can stop this one before taking over
+  useEffect(() => {
+    if (!pauseRef) return
+    pauseRef.current = () => {
+      const el = audioRef.current
+      if (!el) return
+      el.pause()
+      setPlaying(false)
+      onPlayingChangeRef.current?.(false)
+    }
+    return () => { if (pauseRef) pauseRef.current = null }
+  }, [pauseRef])
+
+  // Expose play() so external code (e.g. card buttons) can start playback
+  useEffect(() => {
+    if (!playRef) return
+    playRef.current = () => {
+      const el = audioRef.current
+      if (!el) return
+      el.play().catch(() => {})
+      setPlaying(true)
+      onPlayingChangeRef.current?.(true)
+    }
+    return () => { if (playRef) playRef.current = null }
+  }, [playRef])
 
   const handleTimeUpdate = useCallback(() => {
     const t = audioRef.current?.currentTime ?? 0
@@ -54,8 +90,15 @@ export function AudioPlayer({ src, theme, onTimeUpdate, seekToRef }: Props) {
   function togglePlay() {
     const el = audioRef.current
     if (!el) return
-    if (playing) { el.pause(); setPlaying(false) }
-    else         { el.play().catch(() => {}); setPlaying(true) }
+    if (playing) {
+      el.pause()
+      setPlaying(false)
+      onPlayingChange?.(false)
+    } else {
+      el.play().catch(() => {})
+      setPlaying(true)
+      onPlayingChange?.(true)
+    }
   }
 
   function handleScrub(e: React.ChangeEvent<HTMLInputElement>) {
@@ -78,7 +121,7 @@ export function AudioPlayer({ src, theme, onTimeUpdate, seekToRef }: Props) {
     <div
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
-        padding: '5px 0',
+        width: '100%',
         fontFamily: theme.fontFamily,
       }}
       onClick={e => e.stopPropagation()} // prevent collapse toggle
@@ -88,7 +131,7 @@ export function AudioPlayer({ src, theme, onTimeUpdate, seekToRef }: Props) {
         src={src}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoaded}
-        onEnded={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); onPlayingChange?.(false) }}
         preload="metadata"
       />
 
@@ -120,7 +163,7 @@ export function AudioPlayer({ src, theme, onTimeUpdate, seekToRef }: Props) {
       </span>
 
       {/* Seek bar — custom styled range */}
-      <div style={{ flex: 1, minWidth: 60, maxWidth: 200, position: 'relative', height: 16, display: 'flex', alignItems: 'center' }}>
+      <div style={{ flex: 1, minWidth: 60, position: 'relative', height: 16, display: 'flex', alignItems: 'center' }}>
         {/* Track fill */}
         <div style={{
           position: 'absolute', left: 0, top: '50%',

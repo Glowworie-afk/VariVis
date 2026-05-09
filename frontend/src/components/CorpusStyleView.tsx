@@ -26,8 +26,7 @@ import { ChromaRingPage } from './ChromaRingPage'
 import { PitchContourPage } from './PitchContourPage'
 import { RhythmBubblePage } from './RhythmBubblePage'
 import { MdaAnalysisPage } from './MdaAnalysisPage'
-
-type DetailTab = 'chroma' | 'pitch' | 'rhythm' | 'russell' | 'mda'
+type DetailTab = 'pitch' | 'rhythm' | 'russell' | 'mda'
 
 // ── Shared glyph geometry ─────────────────────────────────────────────
 
@@ -124,10 +123,27 @@ function buildGlyphs(data: PieceData): SegGlyph[] {
     const baseR = 14 + rNorm * 20, innerR = baseR * 0.28
     const nRings = 1 + Math.round(oNorm * 3)
     const rhythmReg = f.rhythm_regularity ?? 0.5
-    const arousal = oNorm * 0.40 + rNorm * 0.30 + pNorm * 0.15 + cNorm * 0.15
-    const valence = isMajor
-      ? 0.48 + consN * 0.32 + rhythmReg * 0.20
-      : 0.30 - consN * 0.20 + rhythmReg * 0.10
+
+    // ── Arousal ───────────────────────────────────────────────────────────────
+    // Feature priority follows Yang et al. (2008) RReliefF ranking (Table VI):
+    // spectral shape (centroid/rolloff/flux) > RMS energy > tempo/onset > pitch.
+    // Yang, H., Liu, C., Chen, H.-H. (2008). "A regression approach to music emotion
+    // recognition." IEEE TASL 16(2), 448–457. DOI 10.1109/TASL.2007.911513
+    const arousal = cNorm * 0.35   // spectral centroid  — top arousal predictor
+                  + rNorm * 0.30   // RMS energy         — amplitude/loudness
+                  + oNorm * 0.20   // onset density      — tempo surrogate
+                  + pNorm * 0.15   // mean pitch height  — pitch-related feature
+
+    // ── Valence ───────────────────────────────────────────────────────────────
+    // Yang et al. (2008): valence is harder (R²≈0.28 vs 0.58 for arousal).
+    // Top valence predictors: beat histogram features (rhythm regularity),
+    // mode (major/minor) as strongest tonal indicator, then harmonic consonance.
+    const valBase = isMajor ? 0.52 : 0.22   // mode = primary binary predictor
+    const valence = Math.min(1.0,
+        valBase
+      + rhythmReg * 0.28    // beat regularity ↔ beat histogram features
+      + consN     * 0.20    // chroma consonance — tonal clarity
+    )
 
     return { seg, i, hue, sat, lit, isMajor, tonicName, baseR, innerR, nRings,
              arousal, valence, brightness: cNorm,
@@ -317,11 +333,10 @@ function RussellPanel({
 // ── Tab definitions ───────────────────────────────────────────────────
 
 const TABS: { id: DetailTab; en: string; zh: string; icon: string }[] = [
-  { id: 'chroma',   en: 'Chroma Ring',      zh: '色度环',    icon: '' },
-  { id: 'pitch',    en: 'Pitch Contour',    zh: '音高折线',  icon: '' },
+  { id: 'pitch',    en: 'Pitch',            zh: '音高折线',  icon: '' },
   { id: 'rhythm',   en: 'Rhythm',           zh: '节奏气泡',  icon: '' },
   { id: 'russell',  en: 'Russell V/A',      zh: '情感轨迹',  icon: '' },
-  { id: 'mda',      en: 'MDA Penalties',    zh: 'MDA 惩罚值',icon: '' },
+  { id: 'mda',      en: 'Derivation Tree',  zh: '派生关系树',icon: '' },
 ]
 
 
@@ -347,8 +362,7 @@ export function CorpusStyleView({
   mainTime = 0, isMainPlaying = false,
 }: Props) {
   const [selectedSeg, setSelectedSeg] = useState<number>(0)
-  // Default to chroma tab — no focus mode
-  const [activeTab,   setActiveTab]   = useState<DetailTab>('chroma')
+  const [activeTab,   setActiveTab]   = useState<DetailTab>('pitch')
 
   const glyphs   = useMemo(() => buildGlyphs(data), [data])
   const segments = data.segments
@@ -407,6 +421,27 @@ export function CorpusStyleView({
         ))}
       </div>
 
+      {/* ═══ GLYPH LEGEND ════════════════════════════════════════════ */}
+      <div style={{
+        flexShrink: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap',
+        gap: '0 16px', padding: '3px 14px',
+        background: isDark ? '#12121e' : '#f1f5f9',
+        borderBottom: `1px solid ${BORDER}`,
+        fontSize: 9, color: theme.labelSecondaryColor, lineHeight: 1.6,
+      }}>
+        {[
+          { en: 'Hue = tonic (circle of fifths)',        zh: '色调 = 调性（五度圈）' },
+          { en: 'Size = RMS loudness',                   zh: '大小 = RMS响度' },
+          { en: 'Rings = onset density',                 zh: '同心环数 = 节奏密度' },
+          { en: 'Shape = pitch-class distribution',      zh: '形状 = 音高类分布' },
+          { en: 'Opacity = major (bright) / minor (dim)',zh: '透明度 = 大调（亮）/ 小调（暗）' },
+        ].map(item => (
+          <span key={item.en} style={{ whiteSpace: 'nowrap' }}>
+            {lang === 'zh' ? item.zh : item.en}
+          </span>
+        ))}
+      </div>
+
       {/* ═══ TAB ROW ══════════════════════════════════════════════════ */}
       <div style={{
         flexShrink: 0, display: 'flex', alignItems: 'stretch',
@@ -447,13 +482,6 @@ export function CorpusStyleView({
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
 
         {/* CHROMA TAB — all segments, selected highlighted */}
-        {activeTab === 'chroma' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
-            <ChromaRingPage key={selectedSeg} data={data} theme={theme} isDark={isDark} lang={lang}
-              selectedSeg={selectedSeg} />
-          </div>
-        )}
-
         {/* PITCH TAB — all segments, selected highlighted */}
         {activeTab === 'pitch' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>
@@ -477,7 +505,6 @@ export function CorpusStyleView({
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <MdaAnalysisPage
               data={data} theme={theme} isDark={isDark} lang={lang}
-              fileName={fileName} hasMidi={hasMidi}
             />
           </div>
         )}

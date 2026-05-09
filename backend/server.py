@@ -35,7 +35,10 @@ except ImportError:
     np = None       # type: ignore
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, UploadFile
+import shutil
+import tempfile
+import uuid
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, Response
 
@@ -1497,18 +1500,31 @@ def _get_musicxml_sections(file_name: str) -> "list[tuple[str,int]]":
     if len(raw) < 2:
         return []
 
+    _ROMAN = {"i":1,"ii":2,"iii":3,"iv":4,"v":5,"vi":6,
+              "vii":7,"viii":8,"ix":9,"x":10,"xi":11,"xii":12}
+
+    def _roman_to_int(s: str) -> int | None:
+        t = s.strip().lower()
+        return _ROMAN.get(t)
+
     result = []
     for off, label in raw:
         idx = offset_to_idx.get(off, 0)
-        # Normalise label to match MIDI convention
         low = label.lower()
         if low in ("tema", "theme"):
             norm = "Theme"
         elif low.startswith("coda"):
             norm = "Coda"
         else:
+            # Try Arabic digits first ("VAR. 3", "Variation 12")
             m2 = re.search(r"(\d+)", label)
-            norm = f"Var.{int(m2.group(1)):02d}" if m2 else label
+            if m2:
+                norm = f"Var.{int(m2.group(1)):02d}"
+            else:
+                # Try Roman numerals ("VAR. I", "VAR. VIII")
+                m3 = re.search(r"[.\s]+([IVXivx]+)\s*$", label)
+                n = _roman_to_int(m3.group(1)) if m3 else None
+                norm = f"Var.{n:02d}" if n else label
         result.append((norm, idx))
 
     return result
@@ -4655,9 +4671,6 @@ def _compute_symbolic_features(notes_sec: list[dict], seg_dur: float) -> dict:
         max_dur_ent = _math.log2(len(bin_counts)) if len(bin_counts) > 1 else 1.0
         result["duration_entropy"] = dur_ent / max_dur_ent if max_dur_ent > 0 else 0.0
 
-    total_sound = sum(durations)
-    result["rest_ratio"] = max(0.0, (seg_dur - total_sound) / max(seg_dur, 1e-6))
-
     # ── Texture ───────────────────────────────────────────────────────
     # Build note-on / note-off event stream and scan for polyphony
     events: list[tuple[float, int]] = []
@@ -4666,6 +4679,23 @@ def _compute_symbolic_features(notes_sec: list[dict], seg_dur: float) -> dict:
         events.append((note["start_sec"] + note["dur_sec"], -1))
     # At equal times: process note-offs before note-ons (conservative polyphony)
     events.sort(key=lambda x: (x[0], x[1]))
+
+    # rest_ratio: fraction of segment duration where NO note is sounding.
+    # Computed from the event timeline so polyphony is handled correctly —
+    # the naive sum(durations) approach double-counts simultaneous notes
+    # and always yields 0 for piano/ensemble MIDI.
+    if events and seg_dur > 0:
+        _sound_time = 0.0
+        _curr = 0
+        _prev_t: float | None = None
+        for _t, _d in events:
+            if _prev_t is not None and _t > _prev_t and _curr > 0:
+                _sound_time += _t - _prev_t
+            _curr += _d
+            _prev_t = _t
+        result["rest_ratio"] = max(0.0, 1.0 - _sound_time / seg_dur)
+    else:
+        result["rest_ratio"] = 0.0
 
     curr = 0; max_sim = 0; total_w = 0.0; prev_t: float | None = None
     for t, delta in events:
@@ -4738,19 +4768,257 @@ def _compute_distributions(notes_sec: list[dict]) -> dict:
     }
 
 
+# ── MusicXML-based symbolic extraction ────────────────────────────────────────
+
+_MXL_SKIP = ("m.s.", "m.d.", "destra", "sinistra", "ritard", "fine", "segue",
+             "rit.", "poco", "sempre", "cresc", "decresc", "dim.", "sfz", "fz",
+             "dolce", "legato", "staccato", "andantino", "andante",
+             "allegro", "adagio", "moderato", "presto", "vivace", "largo", "lento")
+_MXL_ROMAN = {
+    "i":1,"ii":2,"iii":3,"iv":4,"v":5,"vi":6,"vii":7,"viii":8,"ix":9,"x":10,
+    "xi":11,"xii":12,"xiii":13,"xiv":14,"xv":15,"xvi":16,"xvii":17,"xviii":18,
+    "xix":19,"xx":20,"xxi":21,"xxii":22,"xxiii":23,"xxiv":24,"xxv":25,
+    "xxvi":26,"xxvii":27,"xxviii":28,"xxix":29,"xxx":30,
+}
+
+
+def _mxl_label_key(label: str) -> int:
+    low = label.strip().lower()
+    if low in ("t", "theme", "thema", "tema"):
+        return 0
+    if low in ("c", "coda", "finale"):
+        return 999
+    m = re.search(r"(\d+)", label)
+    if m:
+        return int(m.group(1))
+    m2 = re.search(r"[.\s]+([IVXivx]+)\s*$", label)
+    if m2:
+        n_ = _MXL_ROMAN.get(m2.group(1).strip().lower())
+        if n_:
+            return n_
+    return 998
+
+
+def _mxl_key_to_label(key: int, orig: str = "") -> str:
+    if key == 0:   return "T"
+    if key == 999: return "C"
+    if key == 998: return orig.strip() or "?"   # unrecognised label
+    if key >= 1:   return f"V{key}"             # V1 … V997, no upper limit
+    return orig.strip() or "?"
+
+
+def _find_mxl_for_stem(piece_stem: str) -> "Path | None":
+    for ext in (".mxl", ".xml", ".musicxml"):
+        p = MUSICXML_DIR / f"{piece_stem}{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+def _read_mxl_xml_bytes(path: "Path") -> bytes:
+    import zipfile as _zf
+    if path.suffix.lower() == ".mxl":
+        with _zf.ZipFile(path, "r") as z:
+            xml_name = next(
+                (n for n in z.namelist()
+                 if n.endswith(".xml") and "META" not in n.upper()), None)
+            if xml_name is None:
+                raise ValueError("No XML inside .mxl")
+            return z.read(xml_name)
+    return path.read_bytes()
+
+
+def _parse_mxl_symbolic(piece_stem: str) -> "list[dict] | None":
+    """
+    Parse MusicXML and return per-section note lists ready for
+    _compute_symbolic_features().
+
+    Returns list of:
+        { label: str, notes_sec: list[{pitch,start_sec,dur_sec}],
+          seg_dur_sec: float }
+    or None if MusicXML unavailable / no rehearsal marks found.
+    """
+    path = _find_mxl_for_stem(piece_stem)
+    if path is None:
+        return None
+
+    try:
+        import music21
+        xml_bytes = _read_mxl_xml_bytes(path)
+        score = music21.converter.parseData(xml_bytes, format="musicxml")
+    except Exception as e:
+        print(f"  [symbolic] MusicXML parse error ({piece_stem}): {e}")
+        return None
+
+    if not score.parts:
+        return None
+
+    # ── Tempo: first MetronomeMark in score, default 120 ──────────────
+    qpm = 120.0
+    for el in score.flatten():
+        if hasattr(el, "number") and el.classes and "MetronomeMark" in el.classes:
+            try:
+                qpm = float(el.number)
+                break
+            except Exception:
+                pass
+
+    def qn_to_sec(qn: float) -> float:
+        return qn * 60.0 / qpm
+
+    # ── Collect all notes from all parts ──────────────────────────────
+    all_notes: list[dict] = []
+    for part in score.parts:
+        for el in part.flatten().notes:
+            if hasattr(el, "pitch"):  # single Note
+                all_notes.append({
+                    "pitch":    el.pitch.midi,
+                    "start_qn": float(el.offset),
+                    "dur_qn":   float(el.duration.quarterLength) or 0.125,
+                })
+            else:  # Chord
+                for p in el.pitches:
+                    all_notes.append({
+                        "pitch":    p.midi,
+                        "start_qn": float(el.offset),
+                        "dur_qn":   float(el.duration.quarterLength) or 0.125,
+                    })
+
+    if not all_notes:
+        return None
+
+    # ── Detect section boundaries from Rehearsal/TextExpression ───────
+    part0   = score.parts[0]
+    measures = list(part0.getElementsByClass("Measure"))
+
+    raw_sections: list[tuple[float, str]] = []
+    seen_off: set[float] = set()
+    for m in measures:
+        off = float(m.offset)
+        if off in seen_off:
+            continue
+        seen_off.add(off)
+        for el in m.flatten():
+            if el.classes and (
+                "RehearsalMark" in el.classes or "TextExpression" in el.classes
+            ):
+                content = (
+                    el.content if hasattr(el, "content") else str(el)
+                ).strip()
+                if not content:
+                    continue
+                low = content.lower()
+                if any(k in low for k in _MXL_SKIP):
+                    continue
+                if low.startswith(("tema", "var", "theme", "coda", "finale",
+                                   "minore", "maggiore", "trio", "thema")):
+                    raw_sections.append((off, content))
+                    break
+
+    raw_sections.sort(key=lambda x: x[0])
+    if raw_sections and float(raw_sections[0][0]) > 0:
+        raw_sections.insert(0, (0.0, "Theme"))
+
+    if len(raw_sections) < 2:
+        return None   # can't segment — fallback to MIDI
+
+    total_qn = max(n["start_qn"] for n in all_notes) + 0.5
+
+    # ── Build section data ─────────────────────────────────────────────
+    result: list[dict] = []
+    for i, (off, lbl) in enumerate(raw_sections):
+        key      = _mxl_label_key(lbl)
+        next_off = raw_sections[i + 1][0] if i + 1 < len(raw_sections) else total_qn
+        off_f    = float(off)
+        nxt_f    = float(next_off)
+
+        seg_notes_raw = [n for n in all_notes if off_f <= n["start_qn"] < nxt_f]
+        seg_dur_sec   = qn_to_sec(nxt_f - off_f)
+
+        notes_sec = [
+            {
+                "pitch":     n["pitch"],
+                "start_sec": qn_to_sec(n["start_qn"] - off_f),
+                "dur_sec":   max(qn_to_sec(n["dur_qn"]), 0.01),
+            }
+            for n in seg_notes_raw
+        ]
+
+        result.append({
+            "label":       _mxl_key_to_label(key, lbl),
+            "notes_sec":   notes_sec,
+            "seg_dur_sec": seg_dur_sec,
+        })
+
+    return result
+
+
 @app.get("/api/symbolic/{file_name}")
 def get_symbolic_features(file_name: str):
     """
-    Extract symbolic music features per segment from MIDI.
+    Extract symbolic music features per segment.
 
-    Segment timestamps are read from the pre-extracted JSON feature file.
-    MIDI is found via fuzzy match (_find_midi_file).
+    Priority:
+      1. MusicXML  — segment by Rehearsal Mark, notes from score (accurate)
+      2. MIDI      — segment by audio annotation timestamps (legacy fallback)
 
     Returns:
-        { matched, segments: [{label, features: {key: float}}],
-          feature_defs: [{key, label_zh, label_en, cat}] }
+        { matched, source, segments: [{label, n_notes, features, distributions}],
+          feature_defs: [{key, label_zh, label_en, cat, chart_type}] }
     """
-    # ── Load segment timestamps from the existing JSON feature file ────
+    feature_defs_out = [
+        {"key": k, "label_zh": zh, "label_en": en, "cat": cat, "chart_type": ct}
+        for k, zh, en, cat, ct in SYMBOLIC_FEATURE_DEFS
+    ]
+
+    # ── 1. Try MusicXML ────────────────────────────────────────────────
+    piece_stem  = re.sub(r"_\d+$", "", file_name)
+    mxl_sections = _parse_mxl_symbolic(piece_stem)
+
+    if mxl_sections is not None:
+        result_segments = []
+        for sec in mxl_sections:
+            if sec["label"] == "C":          # skip Coda
+                continue
+            notes = sec["notes_sec"]
+            feats = _compute_symbolic_features(notes, sec["seg_dur_sec"])
+            dists = _compute_distributions(notes)
+            result_segments.append({
+                "label":         sec["label"],
+                "n_notes":       len(notes),
+                "features":      feats,
+                "distributions": dists,
+            })
+
+        if result_segments:
+            return {
+                "matched":      True,
+                "file_name":    file_name,
+                "source":       "musicxml",
+                "midi_name":    f"{piece_stem}.mxl",   # kept for UI compat
+                "segments":     result_segments,
+                "feature_defs": feature_defs_out,
+            }
+
+    # ── 2. Graceful no-data response for temp uploads ──────────────────
+    # Temp pieces have no MIDI. If the MXL had no rehearsal marks (mxl_sections
+    # was None) we cannot segment it symbolically. Return an empty-but-valid
+    # response so the frontend can show a "no data source" notice instead of
+    # crashing with a 404.
+    if piece_stem.startswith("temp_"):
+        return {
+            "matched":      False,
+            "file_name":    file_name,
+            "source":       "none",
+            "segments":     [],
+            "feature_defs": feature_defs_out,
+            "message":      (
+                "MusicXML has no detectable section structure "
+                "(no rehearsal marks / section labels found)."
+            ),
+        }
+
+    # ── 3. Fallback: MIDI + audio timestamps ───────────────────────────
     feat_path = FEATURE_DIR / f"{file_name}.json"
     if not feat_path.exists():
         raise HTTPException(
@@ -4768,12 +5036,11 @@ def get_symbolic_features(file_name: str):
             "end_sec":   float(s.get("end_sec", 0)),
         }
         for s in feat_data.get("segments", [])
-        if s.get("label", "C") != "C"   # skip Coda
+        if s.get("label", "C") != "C"
     ]
     if not segments_meta:
         raise HTTPException(422, f"No segments found in feature file for '{file_name}'")
 
-    # ── Locate MIDI ────────────────────────────────────────────────────
     midi_path = _find_midi_file(file_name)
     if midi_path is None:
         raise HTTPException(
@@ -4831,6 +5098,66 @@ def get_symbolic_features(file_name: str):
     if not all_notes:
         raise HTTPException(422, "No notes found in MIDI file")
 
+    # ── Override segments with score-based boundaries (version-invariant) ─
+    # If a shared MusicXML score exists, derive section timestamps from
+    # measure offsets in the score rather than from per-version audio JSON.
+    # This ensures all performance versions of the same piece return identical
+    # feature values, since they share one canonical score structure.
+    mxl_path = _find_musicxml(file_name)
+    if mxl_path is not None:
+        try:
+            import music21 as _m21
+            if mxl_path.suffix.lower() == ".mxl":
+                _xml_bytes = _extract_mxl(mxl_path)
+                _score = _m21.converter.parseData(_xml_bytes, format="musicxml")
+            else:
+                _score = _m21.converter.parse(str(mxl_path))
+
+            _sections = _get_musicxml_sections(file_name)  # [(label, measure_idx), ...]
+
+            if _sections and _score.parts:
+                _part     = _score.parts[0]
+                _measures = list(_part.getElementsByClass("Measure"))
+
+                def _measure_qn(idx: int) -> float:
+                    """Quarter-note offset of measure at index idx."""
+                    if idx < len(_measures):
+                        return float(_measures[idx].offset)
+                    last = _measures[-1]
+                    return float(last.offset) + float(last.duration.quarterLength)
+
+                # Total duration in quarter notes (end of last measure)
+                _total_qn = _measure_qn(len(_measures))
+
+                def _qn_to_sec(qn: float) -> float:
+                    return tick2sec(int(round(qn * tpb)))
+
+                _score_segs: list[dict] = []
+                for _i, (_lbl, _midx) in enumerate(_sections):
+                    if _lbl == "Coda":
+                        continue
+                    _start_qn = _measure_qn(_midx)
+                    # end = start of next non-Coda section
+                    _end_qn: float | None = None
+                    for _j in range(_i + 1, len(_sections)):
+                        _nl, _nm = _sections[_j]
+                        if _nl != "Coda":
+                            _end_qn = _measure_qn(_nm)
+                            break
+                    if _end_qn is None:
+                        _end_qn = _total_qn
+
+                    _score_segs.append({
+                        "label":     _lbl,
+                        "start_sec": _qn_to_sec(_start_qn),
+                        "end_sec":   _qn_to_sec(_end_qn),
+                    })
+
+                if _score_segs:
+                    segments_meta = _score_segs   # replace audio-derived timestamps
+        except Exception:
+            pass  # fall back silently to audio-derived segments_meta
+
     # ── Assign notes to segments based on start_sec ────────────────────
     result_segments = []
     for sm in segments_meta:
@@ -4855,12 +5182,10 @@ def get_symbolic_features(file_name: str):
     return {
         "matched":      True,
         "file_name":    file_name,
+        "source":       "midi",
         "midi_name":    midi_path.name,
         "segments":     result_segments,
-        "feature_defs": [
-            {"key": k, "label_zh": zh, "label_en": en, "cat": cat, "chart_type": ct}
-            for k, zh, en, cat, ct in SYMBOLIC_FEATURE_DEFS
-        ],
+        "feature_defs": feature_defs_out,
     }
 
 
@@ -5063,3 +5388,578 @@ def get_symbolic_audio_features(file_name: str):
         "audio_estimable_keys": sorted(active_keys),
         "segments":             segments_out,
     }
+
+
+# ── /api/upload/process ────────────────────────────────────────────────────
+#
+# Accept optional MusicXML + optional audio + boundary string + piece name.
+# Parse boundaries (MM.SS), auto-generate labels (T, V1, V2, …).
+# Extract features from whichever files were provided.
+# Save to a temp JSON file (FEATURE_DIR / temp_{uuid}.json).
+# Return { temp_id, music_name, available_views }.
+#
+# Available views by input combination:
+#   MusicXML only  → symbolic_heatmap, pitch_contour_score, harmonic_function
+#   Audio only     → rhythm_bubble, mental_landscape, overview
+#   Both           → all of the above
+#
+# The feature JSON written here is a subset of the standard feature JSON so
+# that existing view components can consume it unchanged.
+
+COF_ORDER_U = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]
+COF_NAMES_U = ["C", "G", "D", "A", "E", "B", "F#", "Db", "Ab", "Eb", "Bb", "F"]
+CHROMA_NAMES_U = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+
+def _mmss_to_sec(value: float) -> float:
+    """Convert MM.SS float (1.57 = 1 min 57 sec) to total seconds."""
+    minutes = int(value)
+    seconds = round((value - minutes) * 100, 1)
+    return float(minutes * 60 + seconds)
+
+
+def _parse_boundaries(raw: str) -> list[float]:
+    """Parse comma-separated MM.SS boundary string into sorted seconds list."""
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    secs = []
+    for p in parts:
+        try:
+            secs.append(_mmss_to_sec(float(p)))
+        except ValueError:
+            pass
+    return sorted(secs)
+
+
+def _auto_labels(n_segments: int) -> list[str]:
+    """Generate [T, V1, V2, …] for n_segments segments."""
+    labels = ["T"]
+    for i in range(1, n_segments):
+        labels.append(f"V{i}")
+    return labels
+
+
+def _safe_float(v) -> float:
+    try:
+        x = float(v)
+        return 0.0 if (math.isnan(x) or math.isinf(x)) else x
+    except Exception:
+        return 0.0
+
+
+def _safe_list(arr) -> list:
+    if arr is None:
+        return []
+    return [_safe_float(x) for x in arr]
+
+
+def _chroma_to_cof(chroma: list) -> list:
+    return [chroma[i] for i in COF_ORDER_U]
+
+
+def _extract_audio_segment(y, sr, label: str, compressed_frames: int = 64) -> dict:
+    """Inline audio feature extraction for uploaded segments (mirrors extract_features.py)."""
+    if librosa is None or np is None:
+        raise RuntimeError("librosa / numpy not installed")
+
+    feats: dict = {}
+
+    # 1. Chroma
+    chroma_cqt = librosa.feature.chroma_cqt(y=y, sr=sr, bins_per_octave=36)
+    chroma_mean = np.mean(chroma_cqt, axis=1)
+    chroma_norm = chroma_mean / (chroma_mean.sum() + 1e-8)
+    feats["chroma_chromatic"] = _safe_list(chroma_norm)
+    feats["chroma_cof"]       = _safe_list(_chroma_to_cof(chroma_norm.tolist()))
+    # dominant_pitch must be {name, cof_index} object (not a plain int)
+    dp_pc = int(np.argmax(chroma_norm))   # chromatic pitch class 0-11
+    feats["dominant_pitch"] = {
+        "name":      CHROMA_NAMES_U[dp_pc],
+        "cof_index": COF_ORDER_U.index(dp_pc),
+    }
+
+    # 2. MFCC
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    feats["mfcc_mean"] = _safe_list(np.mean(mfcc, axis=1))
+    feats["mfcc_std"]  = _safe_list(np.std(mfcc, axis=1))
+
+    # 3. RMS / dynamics
+    rms = librosa.feature.rms(y=y)[0]
+    rms_mean = float(np.mean(rms))
+    rms_max  = float(np.max(rms))
+    rms_min_nz = float(np.min(rms[rms > 1e-6])) if np.any(rms > 1e-6) else 1e-6
+    feats["rms_mean"]         = _safe_float(rms_mean)
+    feats["rms_std"]          = _safe_float(np.std(rms))
+    feats["rms_max"]          = _safe_float(rms_max)
+    feats["dynamic_range_db"] = _safe_float(
+        20 * math.log10(rms_max / rms_min_nz) if rms_max > 1e-6 else 0.0
+    )
+
+    # 4. Spectral centroid
+    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+    feats["spectral_centroid_mean"] = _safe_float(np.mean(centroid))
+    feats["spectral_centroid_std"]  = _safe_float(np.std(centroid))
+
+    # 5. Onset / rhythm
+    onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units="time")
+    duration_sec = len(y) / sr
+    feats["onset_density"] = _safe_float(
+        len(onset_frames) / duration_sec if duration_sec > 0 else 0
+    )
+    if len(onset_frames) >= 3:
+        intervals = np.diff(onset_frames)
+        mean_ioi = float(np.mean(intervals))
+        std_ioi  = float(np.std(intervals))
+        cov = std_ioi / mean_ioi if mean_ioi > 0 else 1.0
+        feats["rhythm_regularity"] = _safe_float(1.0 / (1.0 + cov))
+    else:
+        feats["rhythm_regularity"] = 0.5
+
+    # Tempo
+    try:
+        tempo_arr, _ = librosa.beat.beat_track(y=y, sr=sr)
+        feats["tempo"] = _safe_float(float(np.squeeze(tempo_arr)))
+    except Exception:
+        feats["tempo"] = 0.0
+
+    # 6. Tonnetz
+    try:
+        harm = librosa.effects.harmonic(y=y)
+        tnet = librosa.feature.tonnetz(y=harm, sr=sr)
+        feats["tonnetz_mean"] = _safe_list(np.mean(tnet, axis=1))
+    except Exception:
+        feats["tonnetz_mean"] = [0.0] * 6
+
+    # 7. Chord recognition (simple template matching)
+    try:
+        chroma_stft = librosa.feature.chroma_stft(y=y, sr=sr)
+        chroma_avg  = np.mean(chroma_stft, axis=1)
+        import numpy as _np
+        templates = _np.zeros((24, 12))
+        for r in range(12):
+            templates[r,      [r, (r+4)%12, (r+7)%12]] = 1.0
+            templates[r + 12, [r, (r+3)%12, (r+7)%12]] = 1.0
+        norms = _np.linalg.norm(templates, axis=1)
+        sims  = templates @ chroma_avg / (norms * (_np.linalg.norm(chroma_avg) + 1e-8) + 1e-8)
+        best  = int(_np.argmax(sims))
+        root  = best % 12
+        mode  = "major" if best < 12 else "minor"
+        feats["chord_recognition"] = {"root": root, "mode": mode,
+                                       "root_name": CHROMA_NAMES_U[root]}
+    except Exception:
+        feats["chord_recognition"] = {"root": 0, "mode": "major", "root_name": "C"}
+
+    # 8. Missing scalar features (required by OverviewPage PCA)
+    try:
+        feats["zcr_mean"]              = _safe_float(float(np.mean(librosa.feature.zero_crossing_rate(y=y)[0])))
+        feats["spectral_flatness_mean"]= _safe_float(float(np.mean(librosa.feature.spectral_flatness(y=y)[0])))
+        sc = librosa.feature.spectral_contrast(y=y, sr=sr)
+        feats["spectral_contrast_mean"]= _safe_list(np.mean(sc, axis=1))
+    except Exception:
+        feats["zcr_mean"]               = 0.0
+        feats["spectral_flatness_mean"] = 0.0
+        feats["spectral_contrast_mean"] = [0.0] * 7
+
+    # 9. Compressed time-series (64 frames)
+    # Full structure: n_frames, rms[64], spectral_centroid[64], chroma_cof[12][64], onset_count[64]
+    n = compressed_frames
+
+    # Downsample frame-level arrays to n frames via linear interpolation indices
+    def _downsample(arr_1d, target):
+        arr = np.array(arr_1d, dtype=float)
+        if len(arr) == 0:
+            return [0.0] * target
+        indices = np.linspace(0, len(arr) - 1, target).astype(int)
+        return _safe_list(arr[indices])
+
+    rms_comp      = _downsample(librosa.feature.rms(y=y)[0], n)
+    centroid_comp = _downsample(centroid, n)
+
+    # chroma_cof per frame: shape (12, n_frames_orig) → downsample to (12, n)
+    chroma_cof_frames = []
+    for pc_idx in COF_ORDER_U:          # iterate in COF order
+        row = chroma_cqt[pc_idx, :]     # raw CQT chroma for this pitch class
+        chroma_cof_frames.append(_downsample(row, n))
+
+    # onset count per frame
+    onset_comp = [0] * n
+    if duration_sec > 0:
+        for t in onset_frames:
+            idx = int(t / duration_sec * n)
+            if 0 <= idx < n:
+                onset_comp[idx] += 1
+
+    feats["compressed"] = {
+        "n_frames":          n,
+        "rms":               rms_comp,
+        "spectral_centroid": centroid_comp,
+        "chroma_cof":        chroma_cof_frames,   # [12][n]
+        "onset_count":       onset_comp,
+    }
+
+    # 10. pYIN pitch contour — same algorithm as add_pitch_contour.py
+    try:
+        hop = 512
+        f0, voiced_flag, _ = librosa.pyin(
+            y,
+            fmin=librosa.note_to_hz("C3"),
+            fmax=librosa.note_to_hz("C7"),
+            frame_length=2048,
+            hop_length=hop,
+            sr=sr,
+        )
+        # Interpolate unvoiced frames so contour is continuous
+        valid_mask = voiced_flag & ~np.isnan(f0)
+        if valid_mask.sum() >= 4:
+            from scipy.interpolate import interp1d as _interp1d
+            t_arr    = np.arange(len(f0))
+            f_interp = _interp1d(
+                t_arr[valid_mask], f0[valid_mask],
+                kind="linear", fill_value="extrapolate", bounds_error=False,
+            )
+            f0_filled = f_interp(t_arr)
+        else:
+            f0_filled = np.full(max(len(f0), n), 261.63)
+
+        f0_safe      = np.maximum(f0_filled, 1.0)
+        midi_contour = 69.0 + 12.0 * np.log2(f0_safe / 440.0)
+
+        # Tonic detection via Temperley templates (same as add_pitch_contour.py)
+        _TEMP_MAJOR = np.array([5,2,3.5,2,4.5,4,2,4.5,2,3.5,1.5,4], dtype=float)
+        _TEMP_MINOR = np.array([5,2,3.5,4.5,2,4,2,4.5,3.5,2,1.5,4], dtype=float)
+        chroma_arr  = np.array(feats.get("chroma_chromatic", [0.0]*12), dtype=float)
+        best_r, best_tonic = -np.inf, 0
+        for tonic in range(12):
+            for tmpl in (np.roll(_TEMP_MAJOR, tonic), np.roll(_TEMP_MINOR, tonic)):
+                r = float(np.corrcoef(chroma_arr, tmpl)[0, 1])
+                if r > best_r:
+                    best_r, best_tonic = r, tonic
+
+        # Compress to n frames (mean of each segment) — tonic-relative
+        def _compress(arr_1d, target):
+            arr = np.array(arr_1d, dtype=float)
+            if len(arr) == 0:
+                return [0.0] * target
+            idx = np.linspace(0, len(arr), target + 1, dtype=int)
+            return [float(np.mean(arr[idx[i]:idx[i+1]])) if idx[i+1] > idx[i] else 0.0
+                    for i in range(target)]
+
+        def _to_relative(vals, tonic_semitone):
+            return [v - (60 + tonic_semitone) for v in vals]
+
+        midi_compressed = _compress(midi_contour, n)
+        midi_relative   = _to_relative(midi_compressed, best_tonic)
+
+        # Beat-aligned sampling
+        try:
+            frame_times = librosa.frames_to_time(np.arange(len(f0)), sr=sr, hop_length=hop)
+            _, beat_frames = librosa.beat.beat_track(y=y, sr=sr, hop_length=hop)
+            beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop)
+        except Exception:
+            beat_times = np.linspace(0, len(y)/sr, 17)[:-1]
+            frame_times = librosa.frames_to_time(np.arange(len(f0)), sr=sr, hop_length=hop)
+
+        beat_midi: list[float] = []
+        for i, t_start in enumerate(beat_times):
+            t_end = beat_times[i+1] if i+1 < len(beat_times) else frame_times[-1]
+            mask  = (frame_times >= t_start) & (frame_times < t_end) & voiced_flag
+            if mask.sum() > 0:
+                beat_midi.append(float(np.median(midi_contour[mask])))
+            elif beat_midi:
+                beat_midi.append(beat_midi[-1])
+            else:
+                beat_midi.append(60.0 + best_tonic)
+
+        beat_midi_relative = _to_relative(beat_midi, best_tonic)
+
+        feats["pitch_contour"] = {
+            "n_frames":           n,
+            "midi":               midi_compressed,
+            "midi_relative":      midi_relative,
+            "beat_midi":          beat_midi,
+            "beat_midi_relative": beat_midi_relative,
+            "voiced_ratio":       round(float(np.sum(voiced_flag) / max(len(voiced_flag), 1)), 3),
+            "tonic_semitone":     best_tonic,
+        }
+    except Exception as _e:
+        print(f"  [upload] pitch_contour failed: {_e}")
+        feats["pitch_contour"] = {"beat_midi": [], "midi_relative": [], "n_frames": n, "midi": []}
+
+    return feats
+
+
+def _extract_mxl_pitch_contour(mxl_sections: list) -> list[dict]:
+    """
+    Convert MusicXML note data (from _parse_mxl_symbolic) into pitch_contour
+    dicts per section, matching the format expected by OverviewPage / pYIN.
+    Returns a list of { beat_midi: [...], midi_relative: [...] } per section.
+    """
+    result = []
+    for sec in mxl_sections:
+        if sec["label"] == "C":
+            continue
+        notes = sec["notes_sec"]
+        if not notes:
+            result.append({"beat_midi": [], "midi_relative": []})
+            continue
+        pitches = [n["pitch"] for n in sorted(notes, key=lambda x: x["start_sec"])]
+        # Downsample to 64 values
+        indices = [int(i * (len(pitches) - 1) / 63) for i in range(min(64, len(pitches)))]
+        sampled = [pitches[i] for i in indices]
+        mean_p  = sum(sampled) / len(sampled)
+        rel     = [p - mean_p for p in sampled]
+        result.append({"beat_midi": sampled, "midi_relative": rel})
+    return result
+
+
+@app.post("/api/upload/process")
+async def upload_and_process(
+    piece_name:  str                  = Form(...),
+    boundaries:  str                  = Form(""),   # optional for MXL-only uploads
+    musicxml:    UploadFile | None    = File(None),
+    audio:       UploadFile | None    = File(None),
+    pdf:         UploadFile | None    = File(None),
+):
+    """
+    Accept uploaded files, extract features, return temp feature data.
+
+    Form fields:
+      - piece_name: display name for the piece
+      - boundaries: comma-separated MM.SS boundary values (e.g. "0.00,1.00,2.30").
+                    Required when audio is provided; optional for MXL-only uploads
+                    (sections will be derived from rehearsal marks instead).
+      - musicxml:   optional MusicXML / .mxl file
+      - audio:      optional WAV / MP3 file
+      - pdf:        optional PDF score file
+
+    Returns:
+      { temp_id, music_name, available_views, feature_data }
+    """
+    has_mxl   = musicxml is not None and musicxml.filename not in (None, "")
+    has_audio = audio    is not None and audio.filename    not in (None, "")
+    has_pdf   = pdf      is not None and pdf.filename      not in (None, "")
+
+    if not has_mxl and not has_audio:
+        raise HTTPException(400, "At least one of musicxml or audio must be provided.")
+
+    # Parse boundaries — required when audio is present, optional for MXL-only
+    boundary_secs = _parse_boundaries(boundaries.strip()) if boundaries.strip() else []
+    if has_audio and len(boundary_secs) < 2:
+        raise HTTPException(400, "At least 2 boundary timestamps are required when audio is provided.")
+
+    # n_segments / labels resolved later (after MXL parse) for MXL-only uploads
+    temp_id   = str(uuid.uuid4())[:8]
+    temp_name = f"temp_{temp_id}"
+
+    available_views: list[str] = []
+
+    # ── Temporary file storage ────────────────────────────────────────
+    tmp_dir = Path(tempfile.mkdtemp(prefix="varivis_upload_"))
+
+    try:
+        mxl_path: Path | None = None
+        audio_path: Path | None = None
+
+        if has_mxl:
+            ext = Path(musicxml.filename).suffix.lower() or ".mxl"
+            mxl_path = tmp_dir / f"score{ext}"
+            content = await musicxml.read()
+            mxl_path.write_bytes(content)
+
+        if has_audio:
+            ext = Path(audio.filename).suffix.lower() or ".wav"
+            audio_path = tmp_dir / f"audio{ext}"
+            content = await audio.read()
+            audio_path.write_bytes(content)
+
+        # Save PDF to IMSLP_DIR so it can be served via /api/upload/temp_pdf/{temp_name}
+        tmp_pdf_stem: str | None = None
+        if has_pdf and pdf is not None:
+            pdf_dest = IMSLP_DIR / f"{temp_name}.pdf"
+            content = await pdf.read()
+            pdf_dest.write_bytes(content)
+            tmp_pdf_stem = temp_name
+
+        # ── Build segments ─────────────────────────────────────────────
+        # We'll produce a feature JSON with the same schema as extract_features.py
+        # but only containing what we can compute from the uploaded files.
+
+        segments_out: list[dict] = []
+        mxl_sections: list[dict] | None = None
+
+        # 1. MusicXML path: use _parse_mxl_symbolic on the temp file.
+        #    We need to copy it to MUSICXML_DIR temporarily so the helper can find it.
+        tmp_mxl_stem: str | None = None
+        if has_mxl and mxl_path is not None:
+            tmp_mxl_stem = temp_name
+            dest = MUSICXML_DIR / f"{tmp_mxl_stem}{mxl_path.suffix}"
+            shutil.copy(mxl_path, dest)
+            try:
+                mxl_sections = _parse_mxl_symbolic(tmp_mxl_stem)
+            except Exception as e:
+                print(f"  [upload] MusicXML parse failed: {e}")
+                mxl_sections = None
+            finally:
+                # keep the copy so the frontend can reference it via existing endpoints
+                pass  # will clean up at the end
+
+        # Resolve n_segments / labels / boundary_secs for MXL-only (no boundaries given)
+        if not boundary_secs:
+            if mxl_sections is not None and len(mxl_sections) >= 1:
+                # Build boundary_secs from MXL section durations
+                t = 0.0
+                mxl_boundary_secs = [0.0]
+                for sec in mxl_sections:
+                    t += sec.get("seg_dur_sec", 0.0)
+                    mxl_boundary_secs.append(round(t, 3))
+                boundary_secs = mxl_boundary_secs
+                labels        = [sec["label"] for sec in mxl_sections]
+                n_segments    = len(mxl_sections)
+            else:
+                # No sections detected — single placeholder segment
+                boundary_secs = [0.0, 1.0]
+                labels        = ["T"]
+                n_segments    = 1
+        else:
+            n_segments = len(boundary_secs) - 1
+            labels     = _auto_labels(n_segments)
+
+        # 2. Audio path: load and slice by boundaries.
+        audio_segments_y: list | None = None
+        sr_out = 22050
+        if has_audio and audio_path is not None:
+            if librosa is None:
+                raise HTTPException(500, "librosa is not installed on the server.")
+            y_full, sr_out = librosa.load(str(audio_path), sr=None, mono=True)
+            total_dur = len(y_full) / sr_out
+
+            # Clamp the last boundary to audio length
+            boundary_secs_clamped = [min(b, total_dur) for b in boundary_secs]
+
+            audio_segments_y = []
+            for i in range(n_segments):
+                s = int(boundary_secs_clamped[i] * sr_out)
+                e = int(boundary_secs_clamped[i + 1] * sr_out)
+                e = min(e, len(y_full))
+                audio_segments_y.append(y_full[s:e] if e > s else np.zeros(sr_out // 2))
+
+        # 3. Build per-segment output
+        for i, label in enumerate(labels):
+            seg: dict = {
+                "label":        label,
+                "index":        i,
+                "start_sec":    round(boundary_secs[i], 2),
+                "end_sec":      round(boundary_secs[i + 1], 2) if i + 1 < len(boundary_secs) else round(boundary_secs[-1], 2),
+                "duration_sec": round(boundary_secs[i + 1] - boundary_secs[i], 2) if i + 1 < len(boundary_secs) else 0.0,
+                "features":     {},
+            }
+
+            # Audio features
+            if audio_segments_y is not None and i < len(audio_segments_y):
+                try:
+                    seg["features"] = _extract_audio_segment(audio_segments_y[i], sr_out, label)
+                except Exception as e:
+                    print(f"  [upload] Audio feature extraction failed for {label}: {e}")
+                    seg["features"] = {}
+
+            # pitch_contour from MusicXML if no audio
+            if not has_audio and mxl_sections is not None:
+                pc_list = _extract_mxl_pitch_contour(mxl_sections)
+                if i < len(pc_list):
+                    seg["features"]["pitch_contour"] = pc_list[i]
+
+            segments_out.append(seg)
+
+        # 4. Determine available_views
+        if has_mxl:
+            available_views += ["symbolic_heatmap"]
+            if mxl_sections is not None and len(mxl_sections) >= 2:
+                available_views += ["harmonic_function"]
+        if has_audio:
+            available_views += ["overview", "mentallandscape"]
+        if has_mxl or has_audio:
+            available_views.append("corpus_view")
+
+        # Deduplicate preserving order
+        seen: set[str] = set()
+        av_dedup = []
+        for v in available_views:
+            if v not in seen:
+                av_dedup.append(v)
+                seen.add(v)
+        available_views = av_dedup
+
+        # 5. Build feature JSON (same schema as extract_features.py output)
+        total_dur_out = boundary_secs[-1] - boundary_secs[0]
+        feature_json: dict = {
+            "metadata": {
+                "file_name":          temp_name,
+                "music_name":         piece_name,
+                "composer":           "Uploaded",
+                "period":             "",
+                "instrument":         "",
+                "variation_num":      n_segments - 1,  # exclude Theme
+                "chord_annotation":   None,
+                "sample_rate":        sr_out,
+                "total_duration_sec": round(total_dur_out, 2),
+                "compressed_frames":  64,
+                "cof_order":          COF_ORDER_U,
+                "cof_names":          COF_NAMES_U,
+                "is_temp":            True,
+                "available_views":    available_views,
+                "mxl_stem":           tmp_mxl_stem,
+            },
+            "segments": segments_out,
+        }
+
+        # 6. Save to FEATURE_DIR so existing /api/features/ endpoint can serve it
+        out_path = FEATURE_DIR / f"{temp_name}.json"
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(feature_json, fh, ensure_ascii=False, indent=2)
+
+        return {
+            "temp_id":         temp_id,
+            "temp_name":       temp_name,
+            "music_name":      piece_name,
+            "available_views": available_views,
+            "mxl_stem":        tmp_mxl_stem,
+            "pdf_stem":        tmp_pdf_stem,
+            "n_segments":      n_segments,
+            "labels":          labels,
+        }
+
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@app.get("/api/upload/temp_pdf/{temp_name}")
+def serve_temp_pdf(temp_name: str):
+    """Serve a temporary uploaded PDF score."""
+    if not temp_name.startswith("temp_"):
+        raise HTTPException(400, "Invalid temp name.")
+    pdf_path = IMSLP_DIR / f"{temp_name}.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(404, f"No PDF found for {temp_name}")
+    return FileResponse(str(pdf_path), media_type="application/pdf")
+
+
+@app.delete("/api/upload/temp/{temp_name}")
+def delete_temp_upload(temp_name: str):
+    """Remove a temporary upload's feature file, MusicXML copy, and PDF."""
+    if not temp_name.startswith("temp_"):
+        raise HTTPException(400, "Invalid temp name.")
+
+    feat_path = FEATURE_DIR / f"{temp_name}.json"
+    if feat_path.exists():
+        feat_path.unlink()
+
+    # Remove any MusicXML copy
+    for ext in (".mxl", ".xml", ".musicxml"):
+        p = MUSICXML_DIR / f"{temp_name}{ext}"
+        if p.exists():
+            p.unlink()
+
+    # Remove PDF copy
+    pdf_path = IMSLP_DIR / f"{temp_name}.pdf"
+    if pdf_path.exists():
+        pdf_path.unlink()
+
+    return {"deleted": temp_name}

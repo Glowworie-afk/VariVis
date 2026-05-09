@@ -56,22 +56,31 @@ export interface SegmentFeatures {
     transition_matrix: number[][]  // [24][24] count of chord i → chord j transitions
   }
 
-  // ── Melodic pitch contour (pYIN — optional, added by add_pitch_contour.py) ──
+  // ── Melodic pitch contour (added by add_pitch_contour.py / add_score_pitch.py) ──
   pitch_contour?: PitchContourData
 }
 
 export interface PitchContourData {
-  n_frames: number            // 64
-  midi: number[]              // [64] absolute MIDI values (0–127)
-  midi_relative: number[]     // [64] semitones relative to tonic (0 = tonic, 7 = fifth, 12 = octave)
-  beat_midi: number[]         // [N]  beat-aligned absolute MIDI (one value per beat)
-  beat_midi_relative: number[]// [N]  beat-aligned relative semitones
-  voiced_ratio: number        // fraction of frames with detected pitch (0–1)
-  tonic_semitone: number      // 0=C, 1=C#, ..., 11=B
-  tonic_name: string          // "C", "G", "F#", etc.
-  is_major: boolean
-  key_correlation: number     // Temperley profile fit quality (0–1, higher = more confident)
-  ks_correlation?: number     // legacy field (kept for backwards compat with old JSON)
+  // ── Score-MIDI derived (preferred) — added by add_score_pitch.py ──
+  score_beat_midi?:          number[]  // [N]  highest note per beat (absolute MIDI)
+  score_beat_midi_relative?: number[]  // [N]  semitones from tonic  (0 = tonic)
+  score_tonic_semitone?:     number    // 0=C … 11=B
+  score_tonic_name?:         string    // "C", "G", "F#" …
+  score_is_major?:           boolean
+  score_key_correlation?:    number    // Temperley fit quality
+
+  // ── pYIN derived (legacy) — kept for backwards compat ──
+  n_frames?: number
+  midi?: number[]
+  midi_relative?: number[]
+  beat_midi?: number[]
+  beat_midi_relative?: number[]
+  voiced_ratio?: number
+  tonic_semitone?: number
+  tonic_name?: string
+  is_major?: boolean
+  key_correlation?: number
+  ks_correlation?: number
   error?: string
 }
 

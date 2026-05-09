@@ -27,40 +27,11 @@ interface SegmentData {
   label: string; n_notes: number; features: Record<string, number>
 }
 interface SymbolicResponse {
-  matched: boolean; file_name: string; midi_name: string
+  matched: boolean; file_name: string; midi_name?: string
   segments: SegmentData[]; feature_defs: FeatureDef[]
+  message?: string
 }
-interface AudioSegmentData {
-  label: string; audio_features: Record<string, number>
-}
-interface AudioSymbolicResponse {
-  file_name: string
-  audio_estimable_keys: string[]
-  segments: AudioSegmentData[]
-}
-interface Props { fileName: string }
-
-// Keys whose audio estimates are reliable enough to display.
-// The 6 BasicPitch-derived keys are included here; the backend returns them
-// only when a BP cache exists (has_bp=true). The frontend simply skips the
-// curve when the value is absent/zero for all segments.
-const AUDIO_ESTIMABLE_KEYS = new Set([
-  // Chroma / onset derived (always available)
-  'pitch_class_entropy',
-  'most_common_pc',
-  'most_common_pc_prevalence',
-  'pitch_variety',
-  'tonal_clarity',
-  'chromatic_density',
-  'note_density',
-  // BasicPitch transcription derived (available after first lazy computation)
-  'pitch_range',
-  'mean_pitch',
-  'pitch_std',
-  'bass_register_ratio',
-  'high_register_ratio',
-  'interval_class_variety',
-])
+interface Props { fileName: string; musicName?: string }
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -71,55 +42,69 @@ const CAT_LABEL: Record<Cat, string> = {
   P: 'Pitch', M: 'Melodic', R: 'Rhythmic', T: 'Texture',
 }
 const CHART_TYPE_LABEL: Record<ChartType, string> = {
-  ratio:      '比率型  [0, 1]',
-  entropy:    '熵值型  [0, 1]',
-  continuous: '连续型  [0, ∞)',
-  count:      '整数计数型',
-  signed:     '有符号型  [−1, +1]',
+  ratio:      'Ratio  [0, 1]',
+  entropy:    'Entropy  [0, 1]',
+  continuous: 'Continuous  [0, ∞)',
+  count:      'Integer count',
+  signed:     'Signed  [−1, +1]',
 }
 
-/** One-line Chinese description for every feature */
+/** One-line English description for every feature */
 const FEAT_DESC: Record<string, string> = {
   // Pitch
-  pitch_range:               '最高音与最低音的距离（半音数），反映键盘使用范围。',
-  mean_pitch:                '所有音符的平均 MIDI 音高编号，表示旋律重心所在音区。',
-  pitch_std:                 '音高分布的离散程度：大=高低来回跳，小=集中在某区。',
-  pitch_variety:             '使用了多少种不同音级（最多12个），多=调式色彩丰富。',
-  most_common_pc_prevalence: '出现最多的音级占全部音符的比例，高=调性中心感强。',
-  pitch_class_entropy:       '12个音级分布的均匀度（归一化熵），高≈无调性。',
-  bass_register_ratio:       'MIDI<48（C3以下）的音符占比，高=低音声部活跃。',
-  high_register_ratio:       'MIDI>72（C5以上）的音符占比，高=旋律走向高音区。',
-  most_common_pc:            '出现频率最高的音级编号（0=C … 11=B）。古典变奏中通常恒为主音。',
-  tonal_clarity:             '音级分布与24个大/小调模板的最大 Pearson 相关，越高调性越明确。',
-  chromatic_density:         '实际使用的音级数 ÷ 12，越接近1说明半音材料越丰富。',
-  interval_class_variety:    '出现了多少种不同的音程类（IC 0–6），钢琴曲通常接近满值。',
+  pitch_range:               'Semitone span from lowest to highest note; reflects keyboard range used.',
+  mean_pitch:                'Average MIDI pitch number; indicates the registral centre of gravity.',
+  pitch_std:                 'Spread of pitch values; high = wide leaps, low = confined to a narrow band.',
+  pitch_variety:             'Number of distinct pitch classes used (max 12); high = rich modal colour.',
+  most_common_pc_prevalence: 'Fraction of notes on the most frequent pitch class; high = strong tonal centre.',
+  pitch_class_entropy:       'Evenness of the 12-pc distribution (normalised entropy); high ≈ atonal.',
+  bass_register_ratio:       'Fraction of notes below MIDI 48 (C3); high = active bass voice.',
+  high_register_ratio:       'Fraction of notes above MIDI 72 (C5); high = melody pushed into treble.',
+  most_common_pc:            'Most frequent pitch class (0=C … 11=B). Usually constant across variations.',
+  tonal_clarity:             'Max Pearson correlation with 24 major/minor templates; high = clear key.',
+  chromatic_density:         'Distinct pitch classes used ÷ 12; near 1 = chromatic saturation.',
+  interval_class_variety:    'Number of distinct interval classes (IC 0–6) present.',
   // Melodic
-  mean_melodic_interval:     '相邻音符间平均跨度（半音），大=跳进多，小=级进为主。',
-  repeated_notes_ratio:      '音程=0（原地重复）的比例，高=鼓点感或吟诵风格。',
-  stepwise_ratio:            '音程≤2半音（级进）的比例，高=旋律流畅自然。',
-  chromatic_ratio:           '音程=1半音的比例，高=半音化风格，增加表情或紧张感。',
-  leap_ratio:                '音程>4半音（跳进）的比例，高=旋律起伏大。',
-  large_leap_ratio:          '音程>7半音（大跳，超过纯五度）的比例，高=有戏剧性大跳。',
-  direction_of_motion:       '(上行音程数−下行音程数)/(总音程数)，正=整体上行趋势。',
-  arpeggiation_ratio:        '三度/五度音程的比例，高=分解和弦、琶音织体风格。',
-  melodic_interval_variety:  '使用了多少种不同大小的旋律音程，多=旋律变化丰富。',
-  interval_entropy:          '旋律音程分布的均匀度，高=无固定模式，低=反复使用同一音程。',
+  mean_melodic_interval:     'Mean absolute interval between consecutive notes (semitones); high = leaping.',
+  repeated_notes_ratio:      'Fraction of zero-semitone intervals; high = drumming or chanting style.',
+  stepwise_ratio:            'Fraction of intervals ≤ 2 semitones; high = smooth stepwise melody.',
+  chromatic_ratio:           'Fraction of semitone (1 st) intervals; high = chromatic expressive style.',
+  leap_ratio:                'Fraction of intervals > 4 semitones; high = wide melodic contour.',
+  large_leap_ratio:          'Fraction of intervals > 7 semitones (beyond a perfect fifth); high = dramatic leaps.',
+  direction_of_motion:       '(ascending − descending intervals) / total; positive = overall upward trend.',
+  arpeggiation_ratio:        'Fraction of third/fifth intervals; high = arpeggiated or broken-chord texture.',
+  melodic_interval_variety:  'Number of distinct interval sizes used; high = diverse melodic vocabulary.',
+  interval_entropy:          'Evenness of interval distribution; high = no fixed pattern, low = repetitive.',
   // Rhythmic
-  note_density:              '每秒音符数，直接反映变奏的快慢疏密程度。',
-  mean_note_duration:        '音符平均持续时长（秒），短=快速跑动，长=悠长歌唱。',
-  duration_variability:      '时值的变异系数（std/mean），高=长短音符混杂、节奏层次丰富。',
-  short_note_ratio:          '时值<中位数×0.5的音符占比，高=大量装饰音或快速跑动。',
-  long_note_ratio:           '时值>中位数×2的音符占比，高=有明显保持音或长音。',
-  rest_ratio:                '休止占总时长的比例，高=音符稀疏、有呼吸感。',
-  rhythmic_value_variety:    '使用了多少种不同时值（0.04s为一档），多=节奏层次丰富。',
-  duration_entropy:          '时值分布的均匀度，低=节奏模式固定，高=时值自由混合。',
+  note_density:              'Notes per second; directly reflects the tempo and texture density.',
+  mean_note_duration:        'Average note duration (s); short = fast runs, long = sustained singing style.',
+  duration_variability:      'Coefficient of variation (std/mean) of durations; high = mixed note lengths.',
+  short_note_ratio:          'Fraction of notes shorter than 0.5× median duration; high = ornaments or runs.',
+  long_note_ratio:           'Fraction of notes longer than 2× median duration; high = held or pedal tones.',
+  rest_ratio:                'Fraction of segment duration with no note sounding; high = sparse, breathing.',
+  rhythmic_value_variety:    'Number of distinct duration bins (0.04 s per bin); high = rhythmically layered.',
+  duration_entropy:          'Evenness of duration distribution; low = fixed pattern, high = free mixture.',
   // Texture
-  max_simultaneous_notes:    '任意时刻最多同时发声的音符数，反映和弦最大厚度（声部数）。',
-  mean_simultaneous_notes:   '加权平均同时发声音符数，>1说明有持续的复音/和弦织体。',
-  chord_onset_ratio:         '50ms内有多个音符同时起音的起始点占比，高=以和弦演奏为主。',
+  max_simultaneous_notes:    'Peak simultaneous note count; reflects maximum chord thickness (voice count).',
+  mean_simultaneous_notes:   'Time-weighted average polyphony; > 1 indicates sustained chordal texture.',
+  chord_onset_ratio:         'Fraction of onsets with multiple notes within 50 ms; high = chord-dominated.',
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/** Convert any backend label to short display label ("T", "V1" … "V99"). */
+function dispLabel(label: string): string {
+  if (label === 'Theme' || label === 'T') return 'T'
+  if (label === 'C' || label.toLowerCase() === 'coda') return 'C'
+  // "Var.01", "Var.1", "Var. I" style (score-based path)
+  const m1 = label.match(/^Var[.\s]+(\d+)$/i)
+  if (m1) return `V${parseInt(m1[1], 10)}`
+  // "V1", "V12", "v3" style (already normalised by backend)
+  const m2 = label.match(/^[Vv](\d+)$/)
+  if (m2) return `V${parseInt(m2[1], 10)}`
+  // Fallback: return as-is (preserves unrecognised original labels)
+  return label
+}
 
 function deltaColor(z: number, isTheme: boolean): string {
   if (isTheme) return 'hsl(0,0%,82%)'
@@ -177,15 +162,6 @@ function DescPanel({ def }: { def: FeatureDef }) {
         {FEAT_DESC[def.key] ?? '—'}
       </div>
 
-      {/* Chart type badge */}
-      <div style={{
-        fontSize: 10, color: '#94a3b8',
-        background: '#f8fafc', borderRadius: 4,
-        padding: '2px 6px', alignSelf: 'flex-start',
-        border: '1px solid #e2e8f0',
-      }}>
-        {CHART_TYPE_LABEL[def.chart_type]}
-      </div>
     </div>
   )
 }
@@ -198,12 +174,9 @@ interface ChartProps {
   rowLabels:   string[]
   hoveredIdx:  number | null
   svgWidth:    number
-  audioValues?: number[]   // audio-estimated values (same length as rawValues), or undefined
 }
 
-const AUDIO_ORANGE = '#f97316'
-
-function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth, audioValues }: ChartProps) {
+function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: ChartProps) {
   const { cat, chart_type: ct } = def
   const cc = CAT_COLORS[cat]
   const n  = rawValues.length
@@ -212,23 +185,18 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth, aud
   const std    = Math.sqrt(rawValues.reduce((s, v) => s + (v - mean) ** 2, 0) / n)
   const median = [...rawValues].sort((a, b) => a - b)[Math.floor(n / 2)]
 
-  // Y range includes both MIDI and audio values so the curve fits in the same scale
   const [yMin, yMax] = (() => {
     if (ct === 'signed') {
-      const allVals = audioValues ? [...rawValues, ...audioValues] : rawValues
-      const mx = Math.max(Math.abs(Math.min(...allVals)), Math.abs(Math.max(...allVals)), 0.05)
+      const mx = Math.max(Math.abs(Math.min(...rawValues)), Math.abs(Math.max(...rawValues)), 0.05)
       return [-mx * 1.2, mx * 1.2]
     }
     if (ct === 'ratio' || ct === 'entropy') return [0, 1]
-    const allVals = audioValues ? [...rawValues, ...audioValues] : rawValues
-    return [0, Math.max(...allVals) * 1.18 || 1]
+    return [0, Math.max(...rawValues) * 1.18 || 1]
   })()
 
-  const hasAudio = audioValues && audioValues.length === n
-  const legendH  = hasAudio ? 13 : 0
-  const W = svgWidth, H = 118 + legendH
-  const pL = 40, pR = hasAudio ? 56 : 10, pT = 14, pB = 20
-  const cW = W - pL - pR, cH = H - pT - pB - legendH
+  const W = svgWidth, H = 118
+  const pL = 40, pR = 10, pT = 14, pB = 20
+  const cW = W - pL - pR, cH = H - pT - pB
   const xS = cW / n
   const bW = Math.max(8, xS * 0.7)
 
@@ -242,15 +210,10 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth, aud
     : [0, yMax / 2, yMax]
 
   const refLine =
-    ct === 'ratio'      ? { y: yS(median), color: '#f59e0b', txt: `中位 ${median < 1 ? median.toFixed(2) : median.toFixed(1)}` }
-    : ct === 'entropy'  ? { y: yS(mean),   color: '#14b8a6', txt: `均值 ${mean.toFixed(2)}` }
-    : ct === 'continuous' ? { y: yS(mean), color: cc,        txt: `均值 ${mean < 1 ? mean.toFixed(2) : mean.toFixed(1)}` }
+    ct === 'ratio'      ? { y: yS(median), color: '#f59e0b', txt: `med ${median < 1 ? median.toFixed(2) : median.toFixed(1)}` }
+    : ct === 'entropy'  ? { y: yS(mean),   color: '#14b8a6', txt: `avg ${mean.toFixed(2)}` }
+    : ct === 'continuous' ? { y: yS(mean), color: cc,        txt: `avg ${mean < 1 ? mean.toFixed(2) : mean.toFixed(1)}` }
     : null
-
-  // Build polyline points for audio curve
-  const audioPolyline = hasAudio
-    ? audioValues!.map((v, i) => `${xC(i).toFixed(1)},${yS(v).toFixed(1)}`).join(' ')
-    : ''
 
   const fmt = (v: number) => ct === 'count' ? Math.round(v).toString() : Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1)
 
@@ -293,42 +256,6 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth, aud
         )
       })}
 
-      {/* Audio polyline (drawn on top of bars) */}
-      {hasAudio && <>
-        <polyline
-          points={audioPolyline}
-          fill="none"
-          stroke={AUDIO_ORANGE}
-          strokeWidth={1.8}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {audioValues!.map((v, i) => {
-          const hov = i === hoveredIdx
-          return (
-            <g key={i}>
-              <circle cx={xC(i)} cy={yS(v)} r={hov ? 4 : 2.8}
-                fill={AUDIO_ORANGE} stroke="#fff" strokeWidth={1} />
-              {hov && (
-                <text x={xC(i)} y={yS(v) - 6} textAnchor="middle"
-                  fontSize={9} fill={AUDIO_ORANGE} fontWeight={700}>
-                  {fmt(v)}
-                </text>
-              )}
-            </g>
-          )
-        })}
-        {/* Legend (top-right inside chart area) */}
-        <g transform={`translate(${pL + cW + 4}, ${pT + 2})`}>
-          <rect x={0} y={0} width={50} height={22} rx={3} fill="white" fillOpacity={0.9} stroke="#e2e8f0" strokeWidth={0.8} />
-          <rect x={4} y={6} width={12} height={5} fill={cc + '66'} rx={1} />
-          <text x={19} y={11} fontSize={7.5} fill="#64748b">MIDI</text>
-          <line x1={4} y1={17} x2={16} y2={17} stroke={AUDIO_ORANGE} strokeWidth={1.8} />
-          <circle cx={10} cy={17} r={2} fill={AUDIO_ORANGE} />
-          <text x={19} y={20} fontSize={7.5} fill="#64748b">Audio</text>
-        </g>
-      </>}
-
       {/* Y axis + ticks */}
       <line x1={pL} y1={pT} x2={pL} y2={pT+cH} stroke="#e2e8f0" />
       {yTicks.map((v, ti) => (
@@ -363,22 +290,136 @@ function Placeholder() {
         <rect x={11} y={3} width={3} height={16} rx={1} fill="#e2e8f0"/>
         <rect x={16} y={9} width={3} height={10} rx={1} fill="#e2e8f0"/>
       </svg>
-      悬停列标题查看该特征的分布图
+      Hover column headers to view distributions · Click row labels to view variation profiles
+    </div>
+  )
+}
+
+// ── VariationProfilePanel ───────────────────────────────────────────────────
+
+interface ProfilePanelProps {
+  seg:      SegmentData
+  deltaRow: number[]   // delta z-score for all 33 features (original def order)
+  rawRow:   number[]
+  defs:     FeatureDef[]
+  isTheme:  boolean
+  onClose:  () => void
+  width:    number
+}
+
+function VariationProfilePanel({ seg, deltaRow, rawRow, defs, isTheme, onClose, width }: ProfilePanelProps) {
+  // Sort all features by |delta| descending
+  const items = defs
+    .map((d, i) => ({ def: d, delta: deltaRow[i], raw: rawRow[i] }))
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+
+  const CAP   = 3          // clamp display at ±3 σ
+  const ROW_H = 14
+  const LABEL_W  = 126
+  const VAL_W    = 38
+  const BAR_AREA = Math.max(80, width - 16 - LABEL_W - VAL_W - 8)
+  const BAR_HALF = BAR_AREA / 2
+  const SCALE    = BAR_HALF / CAP
+  const SVG_H    = items.length * ROW_H + 6
+
+  const fmt = (v: number) => Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1)
+
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 8,
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 1px 6px rgba(0,0,0,.04)',
+      marginBottom: 6, overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '5px 10px', borderBottom: '1px solid #f0f0f0', background: '#f8fafc',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {isTheme ? 'Theme — Baseline' : `${dispLabel(seg.label)} — Feature Profile`}
+          {isTheme && (
+            <span style={{ fontSize: 10, fontWeight: 400, color: '#94a3b8' }}>
+              All Δ = 0 — heatmap baseline row
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Category legend */}
+          {(Object.keys(CAT_COLORS) as Cat[]).map(cat => (
+            <span key={cat} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#64748b' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: CAT_COLORS[cat], display: 'inline-block' }} />
+              {CAT_LABEL[cat]}
+            </span>
+          ))}
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 16, lineHeight: 1, padding: '0 4px', marginLeft: 4 }}
+          >×</button>
+        </div>
+      </div>
+
+      {/* Diverging bar chart */}
+      <div style={{ overflowY: 'auto', maxHeight: 200 }}>
+        <svg width={width - 16} height={SVG_H} style={{ display: 'block', margin: '2px 8px' }}>
+          {/* Axis labels */}
+          <text x={LABEL_W + 2} y={10} fontSize={8} fill="#cbd5e1" textAnchor="start">−3σ</text>
+          <text x={LABEL_W + BAR_AREA - 2} y={10} fontSize={8} fill="#cbd5e1" textAnchor="end">+3σ</text>
+          {/* Center line */}
+          <line x1={LABEL_W + BAR_HALF} y1={0} x2={LABEL_W + BAR_HALF} y2={SVG_H}
+            stroke="#e2e8f0" strokeWidth={1} />
+
+          {items.map((item, i) => {
+            const cc  = CAT_COLORS[item.def.cat]
+            const bW  = Math.min(BAR_HALF, Math.abs(item.delta) * SCALE)
+            const bX  = item.delta >= 0 ? LABEL_W + BAR_HALF : LABEL_W + BAR_HALF - bW
+            const y   = i * ROW_H + 4
+            const mid = y + ROW_H / 2
+            const prominent = Math.abs(item.delta) > 1.5
+
+            return (
+              <g key={item.def.key}>
+                {/* Category dot */}
+                <circle cx={5} cy={mid} r={3} fill={cc} />
+                {/* Feature label */}
+                <text x={13} y={mid + 3.5} fontSize={9} fill={prominent ? '#1e293b' : '#64748b'}
+                  fontWeight={prominent ? 600 : 400}>
+                  {item.def.label_en}
+                </text>
+                {/* Bar */}
+                {bW > 0.5 && (
+                  <rect x={bX} y={y + 2} width={bW} height={ROW_H - 5}
+                    fill={cc + (prominent ? 'bb' : '66')} rx={1.5} />
+                )}
+                {/* Delta value */}
+                <text
+                  x={LABEL_W + BAR_AREA + 4} y={mid + 3.5}
+                  fontSize={9}
+                  fill={prominent ? cc : '#94a3b8'}
+                  fontWeight={prominent ? 700 : 400}
+                >
+                  {item.delta > 0 ? '+' : ''}{fmt(item.delta)}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+      </div>
     </div>
   )
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-export default function SymbolicHeatmapPage({ fileName }: Props) {
-  const [data,      setData]      = useState<SymbolicResponse | null>(null)
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState<string | null>(null)
-  const [audioData, setAudioData] = useState<AudioSymbolicResponse | null>(null)
-  const [sortCol,   setSortCol]   = useState<string | null>(null)
-  const [hovRow,    setHovRow]    = useState<number | null>(null)
-  const [hovCol,    setHovCol]    = useState<string | null>(null)
-  const [catFilter, setCatFilter] = useState<'All' | Cat>('All')
+export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
+  const [data,        setData]        = useState<SymbolicResponse | null>(null)
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
+  const [sortCol,     setSortCol]     = useState<string | null>(null)
+  const [hovRow,      setHovRow]      = useState<number | null>(null)
+  const [hovCol,      setHovCol]      = useState<string | null>(null)
+  const [catFilter,   setCatFilter]   = useState<'All' | Cat>('All')
+  const [selectedRow, setSelectedRow] = useState<number | null>(null)
 
   // Widths — measured via ref-callbacks so they fire even after a loading early-return
   const [chartPanelW, setChartPanelW] = useState(0)
@@ -404,21 +445,12 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
     _contRo.current = ro
   }, [])
 
-  // fetch MIDI symbolic + audio symbolic in parallel
   useEffect(() => {
     if (!fileName) return
-    setLoading(true); setError(null); setData(null); setAudioData(null)
-    const midiP = fetch(`/api/symbolic/${fileName}`)
+    setLoading(true); setError(null); setData(null)
+    fetch(`/api/symbolic/${fileName}`)
       .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail ?? r.statusText) }))
-    const audioP = fetch(`/api/symbolic_audio/${fileName}`)
-      .then(r => r.ok ? r.json() : null)
-      .catch(() => null)
-    Promise.all([midiP, audioP])
-      .then(([midi, audio]) => {
-        setData(midi as SymbolicResponse)
-        if (audio) setAudioData(audio as AudioSymbolicResponse)
-        setLoading(false)
-      })
+      .then(midi => { setData(midi as SymbolicResponse); setLoading(false) })
       .catch(e => { setError(e.message); setLoading(false) })
   }, [fileName])
 
@@ -429,7 +461,7 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
     const labels = segments.map(s => s.label)
     const nR = segments.length, nC = defs.length
     const rawMat: number[][] = segments.map(s => defs.map(d => s.features[d.key] ?? 0))
-    const themeIdx = segments.findIndex(s => s.label === 'T')
+    const themeIdx = segments.findIndex(s => s.label === 'Theme' || s.label === 'T')
     const zMat: number[][] = Array.from({length: nR}, () => new Array(nC).fill(0))
     for (let c = 0; c < nC; c++) {
       const zc = zScore(rawMat.map(r => r[c]))
@@ -456,53 +488,59 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
     return ci < 0 ? base : [...base].sort((a,b) => derived.deltaMat[a][ci] - derived.deltaMat[b][ci])
   }, [derived, sortCol])
 
-  // Build audio lookup: label → feature map
-  const audioByLabel = useMemo(() => {
-    if (!audioData) return null
-    const map: Record<string, Record<string, number>> = {}
-    for (const seg of audioData.segments) map[seg.label] = seg.audio_features
-    return map
-  }, [audioData])
-
   const tooltip = useMemo(() => {
     if (!derived || !hovCol) return null
-    // only show tooltip if hovered column is currently visible
     const visibleKeys = catFilter === 'All' ? derived.defs.map(d => d.key) : derived.defs.filter(d => d.cat === catFilter).map(d => d.key)
     if (!visibleKeys.includes(hovCol)) return null
     const ci = derived.defs.findIndex(d => d.key === hovCol)
     if (ci < 0) return null
     const def = derived.defs[ci]
-    // Include audio values only for estimable features that have non-zero data
-    let audioValues: number[] | undefined
-    if (audioByLabel && AUDIO_ESTIMABLE_KEYS.has(def.key)) {
-      const vals = rowOrder.map(ri => audioByLabel[derived.labels[ri]]?.[def.key] ?? 0)
-      // Only show curve if at least one value is non-zero (BP cache may not exist yet)
-      if (vals.some(v => v !== 0)) audioValues = vals
-    }
     return {
       def,
       rawValues:  rowOrder.map(ri => derived.rawMat[ri][ci]),
-      rowLabels:  rowOrder.map(ri => derived.labels[ri]),
+      rowLabels:  rowOrder.map(ri => dispLabel(derived.labels[ri])),
       hoveredIdx: hovRow !== null ? rowOrder.indexOf(hovRow) : null,
-      audioValues,
     }
-  }, [derived, hovCol, rowOrder, hovRow, catFilter, audioByLabel])
+  }, [derived, hovCol, rowOrder, hovRow, catFilter])
+
+  const profilePanel = useMemo(() => {
+    if (!derived || selectedRow === null) return null
+    return {
+      seg:      derived.segments[selectedRow],
+      deltaRow: derived.deltaMat[selectedRow],
+      rawRow:   derived.rawMat[selectedRow],
+      isTheme:  selectedRow === derived.themeIdx,
+    }
+  }, [derived, selectedRow])
 
   // ── Render ────────────────────────────────────────────────────────
-  if (!fileName) return <div style={{padding:40,color:'#94a3b8'}}>请先选择曲目。</div>
+  if (!fileName) return <div style={{padding:40,color:'#94a3b8'}}>Select a piece to view the heatmap.</div>
   if (loading)   return (
     <div style={{padding:40,display:'flex',alignItems:'center',gap:10,color:'#94a3b8'}}>
       <div style={{width:18,height:18,border:'2px solid #e2e8f0',borderTopColor:'#6366f1',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>
-      正在从 MIDI 提取 33 个符号特征…
+      Extracting symbolic features…
     </div>
   )
   if (error) return (
     <div style={{padding:40}}>
-      <div style={{color:'#e63946',fontWeight:600}}>提取失败</div>
+      <div style={{color:'#e63946',fontWeight:600}}>Extraction failed</div>
       <div style={{fontSize:13,color:'#64748b',marginTop:6}}>{error}</div>
     </div>
   )
   if (!derived) return null
+
+  // Empty segments: MusicXML had no detectable rehearsal-mark structure
+  if (derived.segments.length === 0) return (
+    <div style={{padding:40,textAlign:'center'}}>
+      <div style={{fontSize:13,color:'#94a3b8',lineHeight:1.7}}>
+        <div style={{fontSize:16,marginBottom:6}}>📄</div>
+        <div style={{fontWeight:600,color:'#64748b',marginBottom:4}}>No segment data</div>
+        <div style={{fontSize:11}}>
+          {data?.message ?? 'No rehearsal marks found in the MusicXML — automatic segmentation unavailable.'}
+        </div>
+      </div>
+    </div>
+  )
 
   const { defs, segments, deltaMat, rawMat, themeIdx } = derived
 
@@ -526,7 +564,7 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
 
       {/* ── 1. Header ──────────────────────────────────────────── */}
       <div style={{marginBottom:4}}>
-        <div style={{fontSize:15,fontWeight:700,color:'#1e293b'}}>Delta Heatmap — {fileName}</div>
+        <div style={{fontSize:15,fontWeight:700,color:'#1e293b'}}>Delta Heatmap — {musicName ?? fileName}</div>
         <div style={{fontSize:11,color:'#94a3b8',marginTop:3}}>
           33 symbolic features · colour = z-score deviation of each variation from theme · click column to sort
         </div>
@@ -561,7 +599,20 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
         </div>
       </div>
 
-      {/* ── 3. Tooltip area ────────────────────────────────────── */}
+      {/* ── 3. Variation Profile Panel (appears when row label clicked) ── */}
+      {profilePanel && (
+        <VariationProfilePanel
+          seg={profilePanel.seg}
+          deltaRow={profilePanel.deltaRow}
+          rawRow={profilePanel.rawRow}
+          defs={defs}
+          isTheme={profilePanel.isTheme}
+          onClose={() => setSelectedRow(null)}
+          width={containerW - 20}
+        />
+      )}
+
+      {/* ── 4. Tooltip area ────────────────────────────────────── */}
       <div style={{
         height:130,minHeight:130,flexShrink:0,
         background:'#fff',borderRadius:8,
@@ -582,7 +633,6 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
                     rowLabels={tooltip.rowLabels}
                     hoveredIdx={tooltip.hoveredIdx}
                     svgWidth={Math.max(100, chartPanelW - 20)}
-                    audioValues={tooltip.audioValues}
                   />
                 )}
               </div>
@@ -661,16 +711,26 @@ export default function SymbolicHeatmapPage({ fileName }: Props) {
                   onMouseLeave={() => setHovRow(null)}
                   style={{background: isHovR?'#f0f4ff' : isTheme?'#f9fafb':'transparent'}}
                 >
-                  <td style={{
-                    position:'sticky',left:0,zIndex:1,
-                    background: isHovR?'#e8eeff' : isTheme?'#f1f5f9':'#fff',
-                    fontWeight: isTheme?700:500,fontSize:11,
-                    color: isTheme?'#6366f1':'#334155',
-                    textAlign:'center',height:CELL_H,
-                    borderBottom:'1px solid #f0f0f0',
-                    borderRight:'2px solid #e2e8f0',
-                  }}>
-                    {seg.label}
+                  <td
+                    onClick={() => setSelectedRow(ri === selectedRow ? null : ri)}
+                    style={{
+                      position:'sticky',left:0,zIndex:1,
+                      background: ri === selectedRow ? '#ede9fe'
+                                : isHovR ? '#e8eeff'
+                                : isTheme ? '#f1f5f9' : '#fff',
+                      fontWeight: isTheme?700:500,fontSize:11,
+                      color: ri === selectedRow ? '#7c3aed'
+                           : isTheme ? '#6366f1' : '#334155',
+                      textAlign:'center',height:CELL_H,
+                      borderBottom:'1px solid #f0f0f0',
+                      borderRight: ri === selectedRow ? '2px solid #7c3aed' : '2px solid #e2e8f0',
+                      cursor:'pointer',
+                      userSelect:'none',
+                      transition:'background .1s, color .1s',
+                    }}
+                    title="Click to view variation profile"
+                  >
+                    {dispLabel(seg.label)}
                   </td>
                   {visibleDefs.map((d, ci) => {
                     const fullCi  = defs.findIndex(fd => fd.key === d.key)

@@ -70,7 +70,7 @@ const PC_COLORS = [
   '#4CC9F0','#4361EE','#7209B7','#B5179E','#F72585','#E63946',
 ]
 const COF_COLORS = COF_TO_CHROMA.map(c => PC_COLORS[c])
-const COF_NAMES  = ['C','G','D','A','E','B','F♯','D♭','A♭','E♭','B♭','F']
+const COF_NAMES  = ['C','G','D','A','E','B','F','D','A','E','B','F']
 
 /** Returns 12 sector colours: top-N are their COF hue, rest are grey */
 function chordColors(chroma: number[], topN: number, isDark: boolean): string[] {
@@ -696,7 +696,7 @@ function PanelModal({ segIdx,segments,contours,globalMaxRms,pieceAvgRms,pcaData,
           <button onClick={onClose} style={{
             background:'transparent',border:theme.cardBorder,borderRadius:6,
             padding:'2px 9px',cursor:'pointer',fontSize:13,color:theme.labelSecondaryColor,
-          }}>✕</button>
+          }}></button>
         </div>
 
         <div style={{display:'flex',gap:22,alignItems:'flex-start',flexWrap:'wrap'}}>
