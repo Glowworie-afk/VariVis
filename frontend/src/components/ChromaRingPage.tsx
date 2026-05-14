@@ -104,7 +104,7 @@ export function RingCard({ segment, theme, isDark, highlightTop, size = 170 }: C
     : null
 
   // Background tint hue from tonic (COF index of tonic in chroma_cof)
-  const tonicCofIdx = pc ? (pc.tonic_semitone * 7) % 12 : null   // chromatic→COF mapping
+  const tonicCofIdx = pc ? ((pc.tonic_semitone ?? 0) * 7) % 12 : null   // chromatic→COF mapping
   const bgHue = tonicCofIdx !== null ? tonicCofIdx * 30 : 180
 
   return (

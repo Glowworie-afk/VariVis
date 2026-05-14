@@ -2,7 +2,7 @@
 //  Sheet Music View — serves matched IMSLP PDF via iframe
 // Backend fuzzy-matches file_name → IMSLP/*.pdf by catalog number (K/KV, WoO, Op, Hob)
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
 import type { Lang } from '../App'
@@ -26,7 +26,7 @@ export function ScorePage({ data, theme, isDark, lang, fileName, composer }: Pro
   const [matchedFile, setMatchedFile] = useState('')
   const [available, setAvailable] = useState<string[]>([])
 
-  const t = (zh: string, en: string) => lang === 'zh' ? zh : en
+  const t = (zh: ReactNode, en: ReactNode): ReactNode => lang === 'zh' ? zh : en
 
   useEffect(() => {
     let cancelled = false
@@ -51,7 +51,7 @@ export function ScorePage({ data, theme, isDark, lang, fileName, composer }: Pro
         setPdfUrl(url)
         setStatus('ready')
       })
-      .catch(e => {
+      .catch(() => {
         if (!cancelled) setStatus('error')
       })
 

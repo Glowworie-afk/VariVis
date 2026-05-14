@@ -22,7 +22,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import type { PieceData, Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
 import type { Lang } from '../App'
-import { ChromaRingPage } from './ChromaRingPage'
+
 import { PitchContourPage } from './PitchContourPage'
 import { RhythmBubblePage } from './RhythmBubblePage'
 import { MdaAnalysisPage } from './MdaAnalysisPage'
@@ -45,7 +45,7 @@ function radarPolyPts(cx: number, cy: number, chroma: number[], outerR: number, 
 function tonicInfo(seg: Segment): { cofIndex: number; isMajor: boolean; tonicName: string } {
   const pc = seg.features.pitch_contour
   if (pc && pc.tonic_semitone !== undefined && !pc.error)
-    return { cofIndex: (pc.tonic_semitone * 7) % 12, isMajor: pc.is_major, tonicName: pc.tonic_name + (pc.is_major ? '' : 'm') }
+    return { cofIndex: (pc.tonic_semitone * 7) % 12, isMajor: pc.is_major ?? true, tonicName: pc.tonic_name + (pc.is_major ? '' : 'm') }
   return { cofIndex: seg.features.dominant_pitch.cof_index, isMajor: true, tonicName: seg.features.dominant_pitch.name + '*' }
 }
 
@@ -226,113 +226,6 @@ function MiniGlyph({ g, isSelected, onClick, isDark, onPlay, isPlaying, showPlay
 
 
 
-
-// ── Russell V/A panel (all segments, selected highlighted) ────────────
-
-const RC_W = 320, RC_H = 260, RC_PAD = 38
-const RC_PW = RC_W - RC_PAD * 2, RC_PH = RC_H - RC_PAD * 2
-
-const Q_ZONES = [
-  { x: 0.73, y: 0.08, en: 'Energetic',  zh: '兴奋',  fill: '#fee2e2' },
-  { x: 0.20, y: 0.08, en: 'Tense',      zh: '紧张',  fill: '#fef3c7' },
-  { x: 0.73, y: 0.94, en: 'Calm',       zh: '平静',  fill: '#dcfce7' },
-  { x: 0.20, y: 0.94, en: 'Depressed',  zh: '忧郁',  fill: '#dbeafe' },
-]
-
-function RussellPanel({
-  glyphs, selectedSeg, isDark, theme, lang, onSelect,
-  compact = false,
-}: {
-  glyphs: SegGlyph[]; selectedSeg: number
-  isDark: boolean; theme: ThemeTokens; lang: Lang
-  onSelect: (i: number) => void
-  compact?: boolean
-}) {
-  const [hov, setHov] = useState<number | null>(null)
-  const w = compact ? RC_W : RC_W + 80
-  const h = compact ? RC_H : RC_H + 60
-  const pw = w - RC_PAD * 2, ph = h - RC_PAD * 2
-
-  const toX = (v: number) => RC_PAD + v * pw
-  const toY = (a: number) => RC_PAD + (1 - a) * ph
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '4px 6px' }}>
-      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`}
-        preserveAspectRatio="xMidYMid meet"
-        style={{ display: 'block', overflow: 'visible' }}>
-        {/* Quadrant backgrounds */}
-        <rect x={RC_PAD + pw/2} y={RC_PAD}      width={pw/2} height={ph/2} fill="#fee2e2" opacity={0.22} />
-        <rect x={RC_PAD}        y={RC_PAD}      width={pw/2} height={ph/2} fill="#fef3c7" opacity={0.22} />
-        <rect x={RC_PAD + pw/2} y={RC_PAD+ph/2} width={pw/2} height={ph/2} fill="#dcfce7" opacity={0.22} />
-        <rect x={RC_PAD}        y={RC_PAD+ph/2} width={pw/2} height={ph/2} fill="#dbeafe" opacity={0.22} />
-
-        {/* Axes */}
-        <line x1={RC_PAD} y1={RC_PAD+ph/2} x2={RC_PAD+pw} y2={RC_PAD+ph/2}
-          stroke={isDark ? '#44445a' : '#cbd5e1'} strokeWidth={0.9} />
-        <line x1={RC_PAD+pw/2} y1={RC_PAD} x2={RC_PAD+pw/2} y2={RC_PAD+ph}
-          stroke={isDark ? '#44445a' : '#cbd5e1'} strokeWidth={0.9} />
-
-        {/* Axis labels */}
-        <text x={RC_PAD+pw+2} y={RC_PAD+ph/2+3} fontSize={7.5} fill={isDark ? '#666' : '#94a3b8'}>
-          {lang === 'zh' ? '效价→' : 'Valence→'}
-        </text>
-        <text x={RC_PAD+pw/2} y={RC_PAD+12} fontSize={7.5} fill={isDark ? '#666' : '#94a3b8'} textAnchor="middle">
-          {lang === 'zh' ? '↑唤醒' : '↑Arousal'}
-        </text>
-
-        {/* Zone labels */}
-        {Q_ZONES.map((q, qi) => (
-          <text key={qi} x={toX(q.x)} y={toY(q.y) + (qi < 2 ? 0 : 0)} textAnchor="middle"
-            fontSize={compact ? 7.5 : 9} fontWeight={600}
-            fill={isDark ? '#5a5a7a' : '#9ca3af'}>
-            {lang === 'zh' ? q.zh : q.en}
-          </text>
-        ))}
-
-        {/* Trajectory polyline */}
-        <polyline
-          points={glyphs.map(g => `${toX(g.valence).toFixed(1)},${toY(g.arousal).toFixed(1)}`).join(' ')}
-          fill="none" stroke={isDark ? '#44445a' : '#cbd5e1'} strokeWidth={1} strokeDasharray="3 3" />
-
-        {/* Dots */}
-        {glyphs.map((g, gi) => {
-          const px = toX(g.valence), py = toY(g.arousal)
-          const isSel = gi === selectedSeg
-          const isHov = gi === hov
-          const r = isSel ? 8 : isHov ? 6.5 : 5.5
-          return (
-            <g key={gi} style={{ cursor: 'pointer' }}
-              onMouseEnter={() => setHov(gi)}
-              onMouseLeave={() => setHov(null)}
-              onClick={() => onSelect(gi)}>
-              {isSel && (
-                <circle cx={px} cy={py} r={r + 5} fill={`hsl(${g.hue},60%,60%)`} opacity={0.18} />
-              )}
-              <circle cx={px} cy={py} r={r}
-                fill={`hsl(${g.hue},${g.sat}%,${g.lit}%)`}
-                stroke={isSel ? '#4361EE' : (isDark ? '#1b1b2d' : '#fff')}
-                strokeWidth={isSel ? 2 : 1.2} opacity={isSel ? 1 : 0.70} />
-              {/* Label */}
-              <text x={px} y={py - r - 2} textAnchor="middle" fontSize={isSel ? 8 : 6.5}
-                fontWeight={isSel ? 700 : 400}
-                fill={isSel ? '#4361EE' : (isDark ? '#aaa' : '#64748b')}>
-                {g.seg.label}
-              </text>
-              {/* Hevner emoji for selected */}
-              {isSel && (
-                <text x={px} y={py + r + 10} textAnchor="middle" fontSize={11}>
-                  {HEVNER[g.hevnerIdx].emoji}
-                </text>
-              )}
-            </g>
-          )
-        })}
-      </svg>
-    </div>
-  )
-}
-
 // ── Tab definitions ───────────────────────────────────────────────────
 
 const TABS: { id: DetailTab; en: string; zh: string; icon: string }[] = [
@@ -359,8 +252,8 @@ interface Props {
 }
 
 export function CorpusStyleView({
-  data, theme, isDark, lang, fileName, hasMidi,
-  onSeekMain, playMain, pauseMain,
+  data, theme, isDark, lang, fileName, hasMidi: _hasMidi,
+  onSeekMain: _onSeekMain, playMain: _playMain, pauseMain: _pauseMain,
   mainTime = 0, isMainPlaying = false,
 }: Props) {
   const [selectedSeg, setSelectedSeg] = useState<number>(0)
@@ -593,9 +486,7 @@ export function CorpusStyleView({
         {activeTab === 'pitch' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <PitchContourPage key={selectedSeg} data={data} theme={theme} isDark={isDark} lang={lang}
-              selectedSeg={selectedSeg}
-              onSeekMain={onSeekMain} playMain={playMain} pauseMain={pauseMain}
-              mainTime={mainTime} isMainPlaying={isMainPlaying} />
+              selectedSeg={selectedSeg} />
           </div>
         )}
 

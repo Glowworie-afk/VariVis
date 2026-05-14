@@ -32,15 +32,6 @@ function shortName(meta: PieceMeta): string {
   return `${meta.composer.split(',')[0]} — "${name}"${verLabel}`
 }
 
-function shortNameBrief(meta: PieceMeta): string {
-  const m = meta.music_name.match(/"(.+?)"/)
-  const name = m ? m[1] : meta.music_name.slice(0, 28)
-  const composer = meta.composer.split(',')[0].split(' ').pop() ?? ''
-  const ver = perfVersion(meta.file_name)
-  const verLabel = ver != null ? ` [v${ver}]` : ''
-  return `${composer} — "${name}"${verLabel}`
-}
-
 
 // ── Piece browser tree helpers ───────────────────────────────────────
 
@@ -119,20 +110,6 @@ type PieceTab =
   | 'mentallandscape'
   | 'symbolic_heatmap'
 
-const AUDIO_TABS: PieceTab[] = [
-  'corpus_view',
-  'mentallandscape',
-  'symbolic_heatmap',
-  'overview',
-]
-
-const TAB_LABELS: Record<PieceTab, { zh: string; en: string; icon: string }> = {
-  corpus_view:       { zh: '焦点概览',   en: 'Focus View',     icon: '' },
-  overview:          { zh: '综合视图',   en: 'Overview',        icon: '' },
-  mentallandscape:   { zh: '心理图景',   en: 'Mental Landscape',icon: '' },
-  symbolic_heatmap:  { zh: '特征对比矩阵', en: 'Feature Comparison Matrix', icon: '' },
-}
-
 // ── State types ──────────────────────────────────────────────────────
 
 type PieceViewState = 'loading' | 'ready' | 'not-extracted' | 'error'
@@ -147,7 +124,7 @@ interface LoadedPiece {
 // ── App ──────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [lang, setLang] = useState<Lang>('en')
+  const [lang, _setLang] = useState<Lang>('en')
   const theme = getTheme('scientific')
 
   const [pieces,           setPieces]          = useState<PieceMeta[]>([])
@@ -325,7 +302,6 @@ export default function App() {
 
   const focusedPiece = loadedPieces.find(p => p.meta.file_name === focusedFile)
 
-  const readyPieces = loadedPieces.filter(p => p.viewState === 'ready' && p.data !== null)
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -704,7 +680,7 @@ function PieceSection({
   theme,
   lang,
   activeTab,
-  setActiveTab,
+  setActiveTab: _setActiveTab,
   onRemove,
   onExtractionDone,
 }: PieceSectionProps) {
@@ -911,28 +887,6 @@ interface UploadedPieceViewProps {
 }
 
 /** Placeholder shown when a view's required data source is absent. */
-function NoDataNotice({ lang, needsAudio, needsMxl }: { lang: Lang; needsAudio?: boolean; needsMxl?: boolean }) {
-  const zh = lang === 'zh'
-  const src = needsAudio && needsMxl
-    ? (zh ? 'MusicXML + 音频' : 'MusicXML + audio')
-    : needsAudio
-      ? (zh ? '音频文件' : 'audio file')
-      : (zh ? 'MusicXML 文件' : 'MusicXML file')
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100%', gap: 8, color: 'var(--vv-text-3)',
-    }}>
-      <span style={{ fontSize: 28, opacity: 0.3 }}>⊘</span>
-      <div style={{ fontSize: 11, fontWeight: 600 }}>
-        {zh ? '暂无对应数据源' : 'No data source available'}
-      </div>
-      <div style={{ fontSize: 10, opacity: 0.7 }}>
-        {zh ? `此视图需要上传 ${src}` : `This view requires an uploaded ${src}`}
-      </div>
-    </div>
-  )
-}
 
 function UploadedPieceView({
   result, data, theme, lang, onRemove,
@@ -996,100 +950,3 @@ function UploadedPieceView({
   )
 }
 
-/** Lightweight segment summary — no heavy chart components, never crashes. */
-function UploadSegmentSummary({
-  data, labels, hasAudio, hasMxl, lang,
-}: {
-  data:     PieceData
-  labels:   string[]
-  hasAudio: boolean
-  hasMxl:   boolean
-  lang:     Lang
-}) {
-  const segs = data.segments
-  const totalSec = data.metadata?.total_duration_sec ?? 0
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
-
-  return (
-    <div style={{ fontSize: 11, color: 'var(--vv-text)' }}>
-      {/* Summary row */}
-      <div style={{
-        display: 'flex', gap: 16, marginBottom: 14,
-        padding: '10px 14px', borderRadius: 8,
-        background: 'var(--vv-elevated)', border: '1px solid var(--vv-border)',
-        flexWrap: 'wrap',
-      }}>
-        <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--vv-text-3)', marginBottom: 2, letterSpacing: 0.5, textTransform: 'uppercase' }}>Segments</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--vv-text)' }}>{segs.length}</div>
-        </div>
-        {totalSec > 0 && (
-          <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--vv-text-3)', marginBottom: 2, letterSpacing: 0.5, textTransform: 'uppercase' }}>Duration</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--vv-text)' }}>{fmt(totalSec)}</div>
-          </div>
-        )}
-        <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--vv-text-3)', marginBottom: 2, letterSpacing: 0.5, textTransform: 'uppercase' }}>Sources</div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {hasMxl   && <span style={{ background: '#6366f1', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>MXL</span>}
-            {hasAudio && <span style={{ background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>Audio</span>}
-          </div>
-        </div>
-      </div>
-
-      {/* Per-segment table */}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
-          <thead>
-            <tr style={{ background: 'var(--vv-elevated)' }}>
-              <th style={thStyle}>#</th>
-              <th style={thStyle}>Label</th>
-              {hasAudio && <th style={thStyle}>Start</th>}
-              {hasAudio && <th style={thStyle}>Duration</th>}
-              {hasAudio && <th style={thStyle}>RMS</th>}
-              {hasAudio && <th style={thStyle}>Tempo (BPM)</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {segs.map((seg, i) => {
-              const f = seg.features ?? {}
-              const rms   = typeof f.rms_mean      === 'number' ? f.rms_mean.toFixed(4)      : '—'
-              const tempo = typeof f.tempo_mean    === 'number' ? f.tempo_mean.toFixed(1)     : '—'
-              const start = typeof seg.start_time  === 'number' ? fmt(seg.start_time)         : '—'
-              const dur   = typeof seg.duration    === 'number' ? `${seg.duration.toFixed(1)}s` : '—'
-              const label = labels?.[i] ?? seg.label ?? `S${i + 1}`
-              return (
-                <tr key={i} style={{ borderBottom: '1px solid var(--vv-border)' }}>
-                  <td style={tdStyle}>{i + 1}</td>
-                  <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--vv-text)' }}>{label}</td>
-                  {hasAudio && <td style={tdStyle}>{start}</td>}
-                  {hasAudio && <td style={tdStyle}>{dur}</td>}
-                  {hasAudio && <td style={tdStyle}>{rms}</td>}
-                  {hasAudio && <td style={tdStyle}>{tempo}</td>}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {!hasAudio && (
-        <div style={{ marginTop: 14, padding: '8px 12px', borderRadius: 6, background: 'var(--vv-elevated)', fontSize: 10, color: 'var(--vv-text-3)' }}>
-          {lang === 'zh'
-            ? '上传音频文件后可查看音频特征（RMS、速度等）'
-            : 'Upload an audio file to view audio features (RMS, tempo, etc.)'}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '5px 10px', textAlign: 'left', fontWeight: 700,
-  fontSize: 9, color: 'var(--vv-text-3)', letterSpacing: 0.5, textTransform: 'uppercase',
-  borderBottom: '1px solid var(--vv-border)',
-}
-const tdStyle: React.CSSProperties = {
-  padding: '5px 10px', color: 'var(--vv-text-2)', fontFamily: 'monospace',
-}

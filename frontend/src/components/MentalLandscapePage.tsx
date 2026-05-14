@@ -182,7 +182,7 @@ function avgMidiRelative(seg: Segment): number | null {
 function tonicCofIndex(seg: Segment): { cofIndex: number; isMajor: boolean; fromPYIN: boolean } {
   const pc = seg.features.pitch_contour
   if (pc && pc.tonic_semitone !== undefined && !pc.error)
-    return { cofIndex: (pc.tonic_semitone * 7) % 12, isMajor: pc.is_major, fromPYIN: true }
+    return { cofIndex: (pc.tonic_semitone * 7) % 12, isMajor: pc.is_major ?? true, fromPYIN: true }
   return { cofIndex: seg.features.dominant_pitch.cof_index, isMajor: true, fromPYIN: false }
 }
 

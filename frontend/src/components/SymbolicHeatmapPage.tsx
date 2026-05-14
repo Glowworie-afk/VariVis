@@ -41,13 +41,6 @@ const CAT_COLORS: Record<Cat, string> = {
 const CAT_LABEL: Record<Cat, string> = {
   P: 'Pitch', M: 'Melodic', R: 'Rhythmic', T: 'Texture',
 }
-const CHART_TYPE_LABEL: Record<ChartType, string> = {
-  ratio:      'Ratio  [0, 1]',
-  entropy:    'Entropy  [0, 1]',
-  continuous: 'Continuous  [0, ∞)',
-  count:      'Integer count',
-  signed:     'Signed  [−1, +1]',
-}
 
 /** One-line English description for every feature */
 const FEAT_DESC: Record<string, string> = {
@@ -550,7 +543,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
     if (!last || last.cat !== d.cat) visibleCatGroups.push({cat: d.cat, count: 1}); else last.count++
   })
 
-  const nCols   = visibleDefs.length
   const ROW_LBL = 40
   const CELL_H  = 16
   const COL_H   = 40

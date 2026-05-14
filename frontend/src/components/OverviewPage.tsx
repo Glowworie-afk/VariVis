@@ -794,7 +794,6 @@ const CHORD_TOP_N = 3
 
 export function OverviewPage({ data, theme, isDark, lang }: Props) {
   const { segments } = data
-  const fileName = data.metadata.file_name
 
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   const open  = useCallback((i: number) => setOpenIdx(i), [])
