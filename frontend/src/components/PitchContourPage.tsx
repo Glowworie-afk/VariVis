@@ -38,24 +38,6 @@ const COF_ORDER = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]
 
 /** Build a 12-bin pitch-class histogram from beat_midi values.
  *  Pass currentBeat=null for the full-segment static view. */
-function buildChromaHist(
-  beatMidi: number[],
-  currentBeat: number | null,
-  windowSize = 8,
-): number[] {
-  const hist = new Array(12).fill(0)
-  const beats = currentBeat === null
-    ? beatMidi
-    : (() => {
-        const lo = Math.max(0, Math.floor(currentBeat) - Math.floor(windowSize / 2))
-        const hi = Math.min(beatMidi.length, lo + windowSize)
-        return beatMidi.slice(lo, hi)
-      })()
-  beats.forEach(m => {
-    if (m > 0) hist[((Math.round(m) % 12) + 12) % 12]++
-  })
-  return hist
-}
 
 /** Mini chroma ring rendered as an SVG <g>, placed in card top-right. */
 function MiniChromaRing({

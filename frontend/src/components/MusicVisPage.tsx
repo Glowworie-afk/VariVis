@@ -93,8 +93,8 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme, lang }:
 
   return (
     <div style={{
-      background:   theme.surface,
-      border:       `1px solid ${theme.borderColor}`,
+      background:   theme.cardBg,
+      border:       `1px solid ${theme.cardBorder}`,
       borderRadius: 8,
       padding:      '8px 10px 6px',
       marginBottom: 8,
@@ -137,7 +137,7 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme, lang }:
                     fontSize: 9, fontWeight: isActive ? 700 : 400,
                     padding: '2px 7px 2px 5px', borderRadius: 4,
                     cursor: isAllMode ? 'pointer' : 'default',
-                    border: `1px solid ${isActive ? color : theme.borderColor}`,
+                    border: `1px solid ${isActive ? color : theme.cardBorder}`,
                     background: isActive ? `${color}22` : 'transparent',
                     color: isActive ? color : theme.labelSecondaryColor,
                     transition: 'all 0.15s',
@@ -171,7 +171,7 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme, lang }:
                 <div style={{ fontSize: 9, color: theme.labelColor, marginBottom: 2, fontWeight: 600 }}>{label}</div>
                 <div style={{
                   display: 'flex', height: 15, borderRadius: 4,
-                  overflow: 'hidden', border: `1px solid ${theme.borderColor}`,
+                  overflow: 'hidden', border: `1px solid ${theme.cardBorder}`,
                 }}>
                   {orderedFns.map(fn => {
                     const pct = agg[fn]
@@ -475,7 +475,7 @@ export function MusicVisPage({ theme, lang, xmlFile }: Props) {
             style={{
               padding: '3px 11px', borderRadius: 20, border: 'none',
               cursor: 'pointer', fontSize: 10, fontWeight: 600,
-              background: activeSection === null ? '#6366f1' : theme.surface,
+              background: activeSection === null ? '#6366f1' : theme.cardBg,
               color:      activeSection === null ? '#fff'    : theme.labelColor,
             }}
           >
@@ -493,7 +493,7 @@ export function MusicVisPage({ theme, lang, xmlFile }: Props) {
                 style={{
                   padding: '3px 11px', borderRadius: 20, border: 'none',
                   cursor: 'pointer', fontSize: 10, fontWeight: 600,
-                  background: isActive ? accent : theme.surface,
+                  background: isActive ? accent : theme.cardBg,
                   color:      isActive ? '#fff'  : theme.labelColor,
                   transition: 'background 0.15s',
                 }}
@@ -542,7 +542,7 @@ export function MusicVisPage({ theme, lang, xmlFile }: Props) {
           display:      containerVisible ? 'flex' : 'none',
           flex:         1,
           minHeight:    0,
-          border:       `1px solid ${theme.borderColor}`,
+          border:       `1px solid ${theme.cardBorder}`,
           borderRadius: 8,
           background:   '#ffffff',
           overflow:     'auto',
