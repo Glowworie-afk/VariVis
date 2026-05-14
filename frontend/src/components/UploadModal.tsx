@@ -259,7 +259,7 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
           }}>
             <span style={{ fontWeight: 600, color: '#475569' }}>Views available: </span>
             {[
-              mxlFile   ? 'Delta Heatmap' : null,
+              mxlFile   ? 'Feature Comparison Matrix' : null,
               mxlFile   ? 'Harmonic Function' : null,
               audioFile ? 'Overview' : null,
               audioFile ? 'Mental Landscape' : null,

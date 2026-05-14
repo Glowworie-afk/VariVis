@@ -621,6 +621,21 @@ function OverviewCard({ segment,normContour,pcaData,allSegments,globalMaxRms,pie
           </button>
         )}
       </div>
+
+      {/* Synthesized audio player row */}
+      {segNotes.length > 0 && (
+        <div
+          style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <MiniSegPlayer
+            notes={segNotes}
+            tempoBpm={tempoBpm}
+            accent={accent}
+            isDark={isDark}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -793,9 +808,34 @@ const CHORD_TOP_N = 3
 
 export function OverviewPage({ data, theme, isDark, lang }: Props) {
   const { segments } = data
+  const fileName = data.metadata.file_name
+
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   const open  = useCallback((i: number) => setOpenIdx(i), [])
   const close = useCallback(() => setOpenIdx(null), [])
+
+  // MIDI notes for synthesis — fetched once per piece, keyed by fileName
+  const [midiNotes,  setMidiNotes]  = useState<MidiNote[]>([])
+  const [midiSegs,   setMidiSegs]   = useState<{idx:number; beat_start:number; beat_end:number}[]>([])
+  const [tempoBpm,   setTempoBpm]   = useState(120)
+  const fetchedFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!fileName || fetchedFor.current === fileName) return
+    fetchedFor.current = fileName
+    fetch(`${API_BASE}/midi/notes/${encodeURIComponent(fileName)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.matched) return
+        setMidiNotes(d.notes ?? [])
+        setMidiSegs(d.segments ?? [])
+        setTempoBpm(d.tempo_bpm ?? 120)
+      })
+      .catch(() => {})
+  }, [fileName])
+
+  // Map each card's position index → notes from the MIDI segment with the same index
+  // (best-effort: if counts differ, notes are empty and player is hidden)
 
   const range    = useMemo(() => globalContourRange(segments), [segments])
   const contours = useMemo(() =>
@@ -836,7 +876,6 @@ export function OverviewPage({ data, theme, isDark, lang }: Props) {
         <span>② {zh?'旋律（极坐标）':'Melody (polar)'}</span>
         <span>③ {zh?`色度（彩色 = 前 ${CHORD_TOP_N} 和弦音）`:`Chroma (colour = top ${CHORD_TOP_N} chord tones)`}</span>
         <span>④ {zh?'节奏气泡':'Rhythm bubbles'}</span>
-        <span style={{marginLeft:'auto'}}>{zh?'点击放大':'Click to enlarge'}</span>
       </div>
 
       {/* Card grid */}

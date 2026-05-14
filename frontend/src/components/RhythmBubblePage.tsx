@@ -177,8 +177,9 @@ export function RhythmBubblePage({ data, theme, isDark, lang, selectedSeg }: Pro
 
       {/* ── SVG ── */}
       <svg
-        width={SVG_W}
-        height={svgH}
+        viewBox={`0 0 ${SVG_W} ${svgH}`}
+        width="100%"
+        height="auto"
         style={{ display: 'block', overflow: 'visible' }}
         onMouseLeave={() => setTooltip(null)}
       >

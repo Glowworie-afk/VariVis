@@ -1,5 +1,5 @@
 /**
- * SymbolicHeatmapPage.tsx  —  33-feature Delta Heatmap
+ * SymbolicHeatmapPage.tsx  —  33-feature Feature Comparison Matrix
  *
  * Layout (top → bottom, no overlap)
  *   1. Header + legend
@@ -147,9 +147,6 @@ function DescPanel({ def }: { def: FeatureDef }) {
       {/* Name */}
       <div>
         <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', lineHeight: 1.3 }}>
-          {def.label_zh}
-        </div>
-        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
           {def.label_en}
         </div>
       </div>
@@ -564,7 +561,7 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
 
       {/* ── 1. Header ──────────────────────────────────────────── */}
       <div style={{marginBottom:4}}>
-        <div style={{fontSize:15,fontWeight:700,color:'#1e293b'}}>Delta Heatmap — {musicName ?? fileName}</div>
+        <div style={{fontSize:15,fontWeight:700,color:'#1e293b'}}>Feature Comparison Matrix — {musicName ?? fileName}</div>
         <div style={{fontSize:11,color:'#94a3b8',marginTop:3}}>
           33 symbolic features · colour = z-score deviation of each variation from theme · click column to sort
         </div>

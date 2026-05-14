@@ -33,8 +33,8 @@ interface Props {
 
 // ── Russell circumplex constants ──────────────────────────────────────
 const RC_W    = 380   // plot area width  (px)
-const RC_H    = 320   // plot area height (px)
-const RC_PAD  = 40    // axis label padding
+const RC_H    = 330   // plot area height (px) — extra 12px top room for Arousal label
+const RC_PAD  = 52    // axis label padding — increased so ↑ Arousal label is not clipped
 const RC_PW   = RC_W - RC_PAD * 2   // inner plot width
 const RC_PH   = RC_H - RC_PAD * 2   // inner plot height
 
@@ -722,7 +722,7 @@ export function MentalLandscapePage({ data, theme, isDark, lang, selectedSeg, on
       <div style={{
         margin: '0 14px 10px',
         border: `1px solid ${isDark ? '#2d2d45' : '#e5e7eb'}`,
-        borderRadius: 8, overflow: 'hidden', fontSize: 9,
+        borderRadius: 8, fontSize: 9,
       }}>
         {/* Panel header */}
         <div
@@ -789,8 +789,23 @@ export function MentalLandscapePage({ data, theme, isDark, lang, selectedSeg, on
               padding: '12px 16px 14px',
               background: isDark ? '#161626' : '#ffffff',
             }}>
-              {/* SVG plot */}
-              <svg width={RC_W} height={RC_H} style={{ flexShrink: 0 }}>
+              {/* SVG plot + Y-axis label */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                {/* Arousal label — pure HTML, no SVG clipping issues */}
+                <div style={{
+                  writingMode: 'vertical-rl',
+                  transform: 'rotate(180deg)',
+                  fontSize: 8.5,
+                  color: isDark ? '#666' : '#94a3b8',
+                  height: RC_H,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  userSelect: 'none',
+                }}>
+                  {lang === 'zh' ? '唤醒度 ↑' : 'Arousal ↑'}
+                </div>
+              <svg width={RC_W} height={RC_H} style={{ flexShrink: 0, overflow: 'visible' }}>
                 <defs>
                   {/* Halo filters for mini glyph in hover tooltip */}
                   <filter id="rc-halo-0" x="-80%" y="-80%" width="260%" height="260%">
@@ -816,9 +831,6 @@ export function MentalLandscapePage({ data, theme, isDark, lang, selectedSeg, on
                 {/* Axis labels */}
                 <text x={RC_PAD + RC_PW + 4} y={RC_PAD + RC_PH/2 + 4} fontSize={8.5} fill={isDark ? '#666' : '#94a3b8'}>
                   {lang === 'zh' ? '效价 →' : 'Valence →'}
-                </text>
-                <text x={RC_PAD + RC_PW/2} y={RC_PAD - 6} fontSize={8.5} fill={isDark ? '#666' : '#94a3b8'} textAnchor="middle">
-                  {lang === 'zh' ? '↑ 唤醒度' : '↑ Arousal'}
                 </text>
                 {/* Axis end markers */}
                 <text x={RC_PAD + 3} y={RC_PAD + RC_PH/2 - 5} fontSize={7} fill={isDark ? '#484860' : '#b0bec5'}>
@@ -975,6 +987,7 @@ export function MentalLandscapePage({ data, theme, isDark, lang, selectedSeg, on
                   )
                 })}
               </svg>
+              </div>{/* end SVG + Arousal label wrapper */}
 
               {/* Legend / segment index */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 8.5, minWidth: 160 }}>

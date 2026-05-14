@@ -18,7 +18,7 @@
  * └────────────────────────────────────────────────────────────────────┘
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import type { PieceData, Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
 import type { Lang } from '../App'
@@ -26,7 +26,8 @@ import { ChromaRingPage } from './ChromaRingPage'
 import { PitchContourPage } from './PitchContourPage'
 import { RhythmBubblePage } from './RhythmBubblePage'
 import { MdaAnalysisPage } from './MdaAnalysisPage'
-type DetailTab = 'pitch' | 'rhythm' | 'russell' | 'mda'
+import { API_BASE } from '../api/pieceApi'
+type DetailTab = 'pitch' | 'rhythm' | 'mda'
 
 // ── Shared glyph geometry ─────────────────────────────────────────────
 
@@ -155,9 +156,9 @@ function buildGlyphs(data: PieceData): SegGlyph[] {
 
 const MINI_W = 72, MINI_CX = 36, MINI_CY = 40, MINI_SVG_H = 84
 
-function MiniGlyph({ g, isSelected, onClick, isDark, onPlay, isPlaying }: {
+function MiniGlyph({ g, isSelected, onClick, isDark, onPlay, isPlaying, showPlay }: {
   g: SegGlyph; isSelected: boolean; onClick: () => void; isDark: boolean
-  onPlay: () => void; isPlaying: boolean
+  onPlay: () => void; isPlaying: boolean; showPlay: boolean
 }) {
   const { hue, sat, lit, baseR, innerR, nRings, hevnerIdx, seg, isMajor } = g
   const hv        = HEVNER[hevnerIdx]
@@ -197,26 +198,28 @@ function MiniGlyph({ g, isSelected, onClick, isDark, onPlay, isPlaying }: {
       <div style={{ fontSize: 9.5, fontWeight: 700, color: isSelected ? '#4361EE' : (isDark ? '#e2e8f0' : '#0F172A'), lineHeight: 1 }}>
         {seg.label}
       </div>
-      {/* Play / pause button */}
-      <button
-        onClick={e => { e.stopPropagation(); onPlay() }}
-        title={isPlaying ? 'Pause' : `Play ${seg.label}`}
-        style={{
-          marginTop: 4,
-          width: 20, height: 20,
-          borderRadius: '50%',
-          border: `1.5px solid ${isPlaying ? tonicHsl : (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)')}`,
-          background: isPlaying ? `hsl(${hue},${sat}%,${lit + 22}%)` : 'transparent',
-          color: isPlaying ? tonicHsl : (isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.38)'),
-          cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 7.5, padding: 0, flexShrink: 0,
-          lineHeight: 1,
-          transition: 'all 0.14s',
-        }}
-      >
-        {isPlaying ? '⏸' : '▶'}
-      </button>
+      {/* Play / pause button — only when MusicXML audio is available */}
+      {showPlay && (
+        <button
+          onClick={e => { e.stopPropagation(); onPlay() }}
+          title={isPlaying ? 'Stop' : `Play ${seg.label}`}
+          style={{
+            marginTop: 4,
+            width: 20, height: 20,
+            borderRadius: '50%',
+            border: `1.5px solid ${isPlaying ? tonicHsl : (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)')}`,
+            background: isPlaying ? `hsl(${hue},${sat}%,${lit + 22}%)` : 'transparent',
+            color: isPlaying ? tonicHsl : (isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.38)'),
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 7.5, padding: 0, flexShrink: 0,
+            lineHeight: 1,
+            transition: 'all 0.14s',
+          }}
+        >
+          {isPlaying ? '⏸' : '▶'}
+        </button>
+      )}
     </div>
   )
 }
@@ -274,7 +277,7 @@ function RussellPanel({
         <text x={RC_PAD+pw+2} y={RC_PAD+ph/2+3} fontSize={7.5} fill={isDark ? '#666' : '#94a3b8'}>
           {lang === 'zh' ? '效价→' : 'Valence→'}
         </text>
-        <text x={RC_PAD+pw/2} y={RC_PAD-5} fontSize={7.5} fill={isDark ? '#666' : '#94a3b8'} textAnchor="middle">
+        <text x={RC_PAD+pw/2} y={RC_PAD+12} fontSize={7.5} fill={isDark ? '#666' : '#94a3b8'} textAnchor="middle">
           {lang === 'zh' ? '↑唤醒' : '↑Arousal'}
         </text>
 
@@ -333,10 +336,9 @@ function RussellPanel({
 // ── Tab definitions ───────────────────────────────────────────────────
 
 const TABS: { id: DetailTab; en: string; zh: string; icon: string }[] = [
-  { id: 'pitch',    en: 'Pitch',            zh: '音高折线',  icon: '' },
-  { id: 'rhythm',   en: 'Rhythm',           zh: '节奏气泡',  icon: '' },
-  { id: 'russell',  en: 'Russell V/A',      zh: '情感轨迹',  icon: '' },
-  { id: 'mda',      en: 'Derivation Tree',  zh: '派生关系树',icon: '' },
+  { id: 'pitch',    en: 'Pitch',                     zh: '音高折线',  icon: '' },
+  { id: 'rhythm',   en: 'Rhythm',                    zh: '节奏气泡',  icon: '' },
+  { id: 'mda',      en: 'Derivation Tree',           zh: '派生关系树',icon: '' },
 ]
 
 
@@ -369,19 +371,123 @@ export function CorpusStyleView({
   const selSeg   = segments[selectedSeg]
   const selG     = glyphs[selectedSeg]
 
-  function isSegPlaying(i: number): boolean {
-    const seg = segments[i]
-    return isMainPlaying && mainTime >= seg.start_sec && mainTime < seg.end_sec
+  // ── MusicXML synthesis state ──────────────────────────────────────────
+  type MxlNote = { pitch: number; start_sec: number; dur_sec: number; velocity: number }
+  type MxlSeg  = { label: string; start_sec: number; end_sec: number }
+
+  const [hasMxl,      setHasMxl]      = useState<boolean | null>(null) // null = loading
+  const [synthIdx,    setSynthIdx]    = useState<number | null>(null)
+  const mxlNotesRef   = useRef<MxlNote[]>([])
+  const mxlSegsRef    = useRef<MxlSeg[]>([])
+  const toneRef       = useRef<typeof import('tone') | null>(null)
+  const synthRef      = useRef<any>(null)
+  const partRef       = useRef<any>(null)
+  const fetchedForRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!fileName || fetchedForRef.current === fileName) return
+    fetchedForRef.current = fileName
+    fetch(`${API_BASE}/score/mxl_notes/${encodeURIComponent(fileName)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.available) { setHasMxl(false); return }
+        mxlNotesRef.current = d.notes    ?? []
+        mxlSegsRef.current  = d.segments ?? []
+        setHasMxl(true)
+      })
+      .catch(() => setHasMxl(false))
+  }, [fileName])
+
+  // Stop synth helper
+  async function stopSynth() {
+    partRef.current?.stop()
+    partRef.current?.dispose()
+    partRef.current = null
+    synthRef.current?.releaseAll()
+    synthRef.current?.dispose()
+    synthRef.current = null
+    if (toneRef.current) {
+      toneRef.current.getTransport().stop()
+      toneRef.current.getTransport().cancel()
+    }
+    setSynthIdx(null)
   }
 
-  function handleGlyphPlay(i: number) {
-    const seg = segments[i]
-    if (isSegPlaying(i)) {
-      pauseMain?.()
-    } else {
-      onSeekMain?.(seg.start_sec)
-      playMain?.()
+  // Play a segment via Tone.js synthesis from MusicXML notes
+  async function playSynth(segIdx: number) {
+    if (!toneRef.current) toneRef.current = await import('tone')
+    const Tone = toneRef.current
+
+    await stopSynth()
+
+    // Match data segment by index (MusicXML segments align with data segments by order)
+    const mxlSeg = mxlSegsRef.current[segIdx] ?? mxlSegsRef.current[0]
+    if (!mxlSeg) return
+
+    const segNotes = mxlNotesRef.current.filter(
+      n => n.start_sec >= mxlSeg.start_sec && n.start_sec < mxlSeg.end_sec
+    )
+    if (segNotes.length === 0) return
+
+    await Tone.start()
+
+    const synth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'triangle' },
+      envelope:   { attack: 0.02, decay: 0.1, sustain: 0.4, release: 0.6 },
+      volume:     -12,
+    }).toDestination()
+    synthRef.current = synth
+
+    const origin   = segNotes[0].start_sec
+    const events   = segNotes.map(n => ({
+      time: round2(n.start_sec - origin),
+      note: Tone.Frequency(n.pitch, 'midi').toNote(),
+      dur:  Math.max(0.05, n.dur_sec * 0.9),
+      vel:  (n.velocity / 127) * 0.8,
+    }))
+    const totalDur = Math.max(...events.map(ev => ev.time + ev.dur)) + 0.5
+
+    const transport = Tone.getTransport()
+    transport.cancel()
+    transport.stop()
+
+    const part = new Tone.Part((time: number, ev: any) => {
+      synth.triggerAttackRelease(ev.note, ev.dur, time, ev.vel)
+    }, events.map(ev => [ev.time, ev]))
+    part.start(0)
+    partRef.current = part
+
+    transport.scheduleOnce(() => {
+      part.stop(); part.dispose(); partRef.current = null
+      synth.releaseAll(); synth.dispose(); synthRef.current = null
+      setSynthIdx(null)
+    }, totalDur)
+
+    transport.start()
+    setSynthIdx(segIdx)
+  }
+
+  function round2(x: number) { return Math.round(x * 100) / 100 }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { stopSynth() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function isSegPlaying(i: number): boolean {
+    if (isMainPlaying) {
+      const seg = segments[i]
+      if (mainTime >= seg.start_sec && mainTime < seg.end_sec) return true
     }
+    return synthIdx === i
+  }
+
+  async function handleGlyphPlay(i: number) {
+    // Only proceed if MusicXML is available
+    if (!hasMxl) return
+    if (synthIdx === i) { await stopSynth(); return }
+    await playSynth(i)
   }
 
   function handleTabClick(tab: DetailTab) {
@@ -417,7 +523,8 @@ export function CorpusStyleView({
           <MiniGlyph key={i} g={g} isSelected={selectedSeg === i}
             onClick={() => setSelectedSeg(i)} isDark={isDark}
             onPlay={() => handleGlyphPlay(i)}
-            isPlaying={isSegPlaying(i)} />
+            isPlaying={isSegPlaying(i)}
+            showPlay={hasMxl === true} />
         ))}
       </div>
 
@@ -509,129 +616,6 @@ export function CorpusStyleView({
           </div>
         )}
 
-{/* RUSSELL TAB — full-size arousal/valence plane, all segments */}
-        {activeTab === 'russell' && (
-          <div style={{
-            height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 24, overflowY: 'auto',
-          }}>
-            <div style={{ width: '100%', maxWidth: 680 }}>
-              <div style={{ marginBottom: 10, fontSize: 11, fontWeight: 700, color: theme.labelColor }}>
-                 {lang === 'zh'
-                  ? 'Russell (1980) 情感平面 · 唤醒度 × 情感效价 · 点击选择变奏段'
-                  : 'Russell (1980) Arousal × Valence Plane · Click to select a segment'}
-              </div>
-              {/* Full-size Russell with all segments */}
-              <svg width="100%" viewBox={`0 0 ${RC_W + 80} ${RC_H + 80}`}
-                style={{ display: 'block', overflow: 'visible' }}>
-                {(() => {
-                  const w = RC_W + 80, h = RC_H + 80
-                  const pw = w - RC_PAD * 2, ph = h - RC_PAD * 2
-                  const toX = (v: number) => RC_PAD + v * pw
-                  const toY = (a: number) => RC_PAD + (1 - a) * ph
-                  return (
-                    <>
-                      {/* Quadrant fills */}
-                      <rect x={RC_PAD+pw/2} y={RC_PAD}      width={pw/2} height={ph/2} fill="#fee2e2" opacity={0.22} />
-                      <rect x={RC_PAD}       y={RC_PAD}      width={pw/2} height={ph/2} fill="#fef3c7" opacity={0.22} />
-                      <rect x={RC_PAD+pw/2} y={RC_PAD+ph/2} width={pw/2} height={ph/2} fill="#dcfce7" opacity={0.22} />
-                      <rect x={RC_PAD}       y={RC_PAD+ph/2} width={pw/2} height={ph/2} fill="#dbeafe" opacity={0.22} />
-                      {/* Axes */}
-                      <line x1={RC_PAD} y1={RC_PAD+ph/2} x2={RC_PAD+pw} y2={RC_PAD+ph/2}
-                        stroke={isDark?'#44445a':'#cbd5e1'} strokeWidth={1} />
-                      <line x1={RC_PAD+pw/2} y1={RC_PAD} x2={RC_PAD+pw/2} y2={RC_PAD+ph}
-                        stroke={isDark?'#44445a':'#cbd5e1'} strokeWidth={1} />
-                      {/* Zone labels */}
-                      {[
-                        { x:0.73,y:0.07,en:'Energetic / Excited',  zh:'兴奋活力'  },
-                        { x:0.20,y:0.07,en:'Tense / Distressed',   zh:'紧张焦虑'  },
-                        { x:0.73,y:0.96,en:'Calm / Relaxed',       zh:'平静放松'  },
-                        { x:0.20,y:0.96,en:'Depressed / Sad',      zh:'忧郁低落'  },
-                      ].map((q, qi) => (
-                        <text key={qi} x={toX(q.x)} y={toY(q.y)} textAnchor="middle"
-                          fontSize={9} fontWeight={600} fill={isDark?'#5a5a7a':'#9ca3af'}>
-                          {lang === 'zh' ? q.zh : q.en}
-                        </text>
-                      ))}
-                      {/* Axis labels */}
-                      <text x={RC_PAD+pw+4} y={RC_PAD+ph/2+4} fontSize={9} fill={isDark?'#666':'#94a3b8'}>
-                        {lang==='zh'?'效价 →':'Valence →'}
-                      </text>
-                      <text x={RC_PAD+pw/2} y={RC_PAD-8} fontSize={9} textAnchor="middle" fill={isDark?'#666':'#94a3b8'}>
-                        {lang==='zh'?'↑ 唤醒度':'↑ Arousal'}
-                      </text>
-                      {/* Trajectory */}
-                      <polyline
-                        points={glyphs.map(g=>`${toX(g.valence).toFixed(1)},${toY(g.arousal).toFixed(1)}`).join(' ')}
-                        fill="none" stroke={isDark?'#44445a':'#cbd5e1'} strokeWidth={1.2} strokeDasharray="3 3" />
-                      {/* Dots */}
-                      {glyphs.map((g, gi) => {
-                        const px=toX(g.valence), py=toY(g.arousal)
-                        const isSel = gi === selectedSeg
-                        const r = isSel ? 10 : 7
-                        return (
-                          <g key={gi} style={{ cursor:'pointer' }} onClick={() => setSelectedSeg(gi)}>
-                            {isSel && <circle cx={px} cy={py} r={r+6} fill={`hsl(${g.hue},60%,60%)`} opacity={0.16}/>}
-                            <circle cx={px} cy={py} r={r}
-                              fill={`hsl(${g.hue},${g.sat}%,${g.lit}%)`}
-                              stroke={isSel?'#4361EE':(isDark?'#1b1b2d':'#fff')}
-                              strokeWidth={isSel?2.5:1.5} opacity={isSel?1:0.75} />
-                            <text x={px} y={py-r-3} textAnchor="middle"
-                              fontSize={isSel?9.5:8} fontWeight={isSel?700:400}
-                              fill={isSel?'#4361EE':(isDark?'#aaa':'#64748b')}>
-                              {g.seg.label}
-                            </text>
-                            {isSel && (
-                              <>
-                                <text x={px} y={py+r+14} textAnchor="middle" fontSize={14}>
-                                  {HEVNER[g.hevnerIdx].emoji}
-                                </text>
-                                <text x={px} y={py+r+28} textAnchor="middle" fontSize={8.5} fontWeight={700}
-                                  fill={`hsl(${HEVNER[g.hevnerIdx].hue},55%,32%)`}>
-                                  {lang==='zh' ? HEVNER[g.hevnerIdx].zh : HEVNER[g.hevnerIdx].label}
-                                </text>
-                              </>
-                            )}
-                          </g>
-                        )
-                      })}
-                    </>
-                  )
-                })()}
-              </svg>
-
-              {/* Segment emotion table */}
-              <div style={{
-                marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 6,
-              }}>
-                {glyphs.map((g, gi) => {
-                  const isSel = gi === selectedSeg
-                  const hv = HEVNER[g.hevnerIdx]
-                  return (
-                    <div key={gi} onClick={() => setSelectedSeg(gi)} style={{
-                      display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px',
-                      borderRadius: 6, cursor: 'pointer', fontSize: 9.5,
-                      border: `1.5px solid ${isSel ? '#4361EE' : (isDark?'#2d2d45':'#e5e7eb')}`,
-                      background: isSel ? 'rgba(67,97,238,0.07)' : 'transparent',
-                      transition: 'all 0.12s',
-                    }}>
-                      <svg width={12} height={12}>
-                        <circle cx={6} cy={6} r={5.5}
-                          fill={`hsl(${g.hue},${g.sat}%,${g.lit}%)`} opacity={0.9} />
-                      </svg>
-                      <span style={{ fontWeight: isSel ? 700 : 500, color: isSel ? '#4361EE' : theme.labelColor }}>
-                        {g.seg.label}
-                      </span>
-                      <span style={{ color: theme.labelSecondaryColor }}>
-                        {hv.emoji} {lang==='zh' ? hv.zh : hv.label}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

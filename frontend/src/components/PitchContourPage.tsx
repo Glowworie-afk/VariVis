@@ -318,7 +318,7 @@ function ContourLegend({ theme, isDark }: { theme: ThemeTokens; isDark: boolean 
         </span>
       ))}
       <span style={{ marginLeft: 'auto', opacity: 0.7 }}>
-        点击卡片放大 · Click card to enlarge
+        Click card to enlarge
       </span>
     </div>
   )

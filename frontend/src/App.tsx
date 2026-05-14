@@ -130,7 +130,7 @@ const TAB_LABELS: Record<PieceTab, { zh: string; en: string; icon: string }> = {
   corpus_view:       { zh: '焦点概览',   en: 'Focus View',     icon: '' },
   overview:          { zh: '综合视图',   en: 'Overview',        icon: '' },
   mentallandscape:   { zh: '心理图景',   en: 'Mental Landscape',icon: '' },
-  symbolic_heatmap:  { zh: '差异热力图', en: 'Delta Heatmap',   icon: '' },
+  symbolic_heatmap:  { zh: '特征对比矩阵', en: 'Feature Comparison Matrix', icon: '' },
 }
 
 // ── State types ──────────────────────────────────────────────────────
@@ -335,7 +335,7 @@ export default function App() {
       gridTemplateAreas:   '"sidebar score"',
     } : {}}>
 
-      {/* ════ SIDEBAR (left) — Piece browser + Delta Heatmap ════ */}
+      {/* ════ SIDEBAR (left) — Piece browser + Feature Comparison Matrix ════ */}
       <aside className="vv-sidebar" style={{ display: 'flex', flexDirection: 'column' }}>
 
         {/* ── Piece browser (top quarter) ── */}
@@ -487,7 +487,7 @@ export default function App() {
           })}
         </div>
 
-        {/* ── Delta Heatmap (remaining space) ── */}
+        {/* ── Feature Comparison Matrix (remaining space) ── */}
         <div style={{ flex: '0 0 auto', overflow: 'hidden', display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--vv-border)' }}>
           {uploadFocused && uploadedPiece ? (
             uploadedPiece.available_views.includes('symbolic_heatmap') ? (
@@ -497,7 +497,7 @@ export default function App() {
               <div style={{ padding: '28px 20px', textAlign: 'center', fontSize: 11, color: 'var(--vv-text-3)', lineHeight: 1.7 }}>
                 <div style={{ fontSize: 15, marginBottom: 6 }}>📊</div>
                 <div style={{ fontWeight: 600, color: 'var(--vv-text-2)', marginBottom: 4 }}>No data source</div>
-                <div>Delta Heatmap requires a MusicXML file.</div>
+                <div>Feature Comparison Matrix requires a MusicXML file.</div>
               </div>
             )
           ) : focusedPiece?.viewState === 'ready' ? (
@@ -629,9 +629,6 @@ export default function App() {
             {!listLoading && !listError && (
               <div className="vv-online-dot" title="Server online" />
             )}
-            <button className="vv-lang-btn" onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')}>
-              {lang === 'zh' ? 'EN' : '中文'}
-            </button>
           </div>
           {/* Score content */}
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>

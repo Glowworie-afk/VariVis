@@ -398,92 +398,6 @@ def _roman_to_int(s: str) -> "int | None":
         total += v if v >= prev else -v
         prev = v
     return total if 1 <= total <= 50 else None
-
-
-def _automap_pdf(pdf_path: Path, dpi: int = 150) -> dict:
-    """
-    OCR every page of a PDF and detect TEMA/THEME and VAR I…XII markers.
-    Returns { label: [page_nums...] } (1-based), plus metadata.
-    """
-    try:
-        import pdf2image
-        import pytesseract
-    except ImportError:
-        return {"error": "pdf2image or pytesseract not installed"}
-
-    images = pdf2image.convert_from_path(str(pdf_path), dpi=dpi)
-    n_pages = len(images)
-
-    # Patterns
-    THEME_RE = re.compile(r'\b(TEMA|THEME|THEMA)\b', re.I)
-    VAR_RE   = re.compile(
-        r'(?:VAR[A-Z.]?\s*|(?<![A-Z])AR[.\s]+)'
-        r'([IVXLCDM]{1,6}|\d{1,2})',
-        re.I
-    )
-    SOLO_RE  = re.compile(r'(?:^|\n)\s*([IVXLCDM]{1,6})\.?\s*(?:\n|$)', re.M)
-
-    page_labels: list[list[str]] = []
-    page_text:   list[str]       = []
-
-    for img in images:
-        text = pytesseract.image_to_string(img, lang='eng+deu', config='--psm 6')
-        page_text.append(text)
-        found: list[str] = []
-
-        if THEME_RE.search(text):
-            found.append('T')
-
-        for m in VAR_RE.finditer(text):
-            raw = m.group(1).upper()
-            n   = _roman_to_int(raw) or (int(raw) if raw.isdigit() else None)
-            if n and 1 <= n <= 50:
-                lbl = f'V{n}'
-                if lbl not in found:
-                    found.append(lbl)
-
-        if not any(l.startswith('V') for l in found):
-            for m in SOLO_RE.finditer(text):
-                raw = m.group(1).upper()
-                n   = _roman_to_int(raw)
-                if n and 1 <= n <= 50:
-                    lbl = f'V{n}'
-                    if lbl not in found:
-                        found.append(lbl)
-
-        page_labels.append(found)
-
-    # Build first_page map: label → first page it appears on
-    first_page: dict[str, int] = {}
-    for pg, labels in enumerate(page_labels, start=1):
-        for lbl in labels:
-            if lbl not in first_page:
-                first_page[lbl] = pg
-
-    if not first_page:
-        return {
-            "mapping": {},
-            "total_pages": n_pages,
-            "detected_labels": [],
-            "page_labels": [{"page": i+1, "labels": ls} for i, ls in enumerate(page_labels)],
-        }
-
-    # Assign page ranges: each label spans from its first page to just before the next label starts
-    ordered = sorted(first_page.items(), key=lambda x: x[1])
-    mapping: dict[str, list[int]] = {}
-    for i, (lbl, start) in enumerate(ordered):
-        end = ordered[i+1][1] if i+1 < len(ordered) else n_pages
-        mapping[lbl] = list(range(start, end + 1))
-
-    return {
-        "mapping":          mapping,
-        "total_pages":      n_pages,
-        "detected_labels":  list(first_page.keys()),
-        "page_labels":      [{"page": i+1, "labels": ls} for i, ls in enumerate(page_labels)],
-    }
-
-
-@app.get("/api/score/automap/{file_name}")
 async def automap_score(file_name: str):
     """
     OCR the matched PDF and auto-detect which pages correspond to Theme / each Variation.
@@ -508,18 +422,6 @@ async def automap_score(file_name: str):
     result   = _automap_pdf(pdf_path)
     result["pdf_name"] = best
     return result
-
-
-# ── /api/score/pagemap — store page→segment mapping ──────────────────
-
-def _pagemap_path(file_name: str) -> Path:
-    """e.g. WAMozart_K265_1 → IMSLP/mozart_k265.pagemap.json"""
-    base = re.sub(r"_\d+$", "", file_name)
-    stem = _SCORE_MAP.get(base, base.lower())
-    return IMSLP_DIR / f"{stem}.pagemap.json"
-
-
-@app.get("/api/score/pagemap/{file_name}")
 def get_pagemap(file_name: str):
     """
     Return saved page→segment mapping for this piece.
@@ -558,9 +460,6 @@ def get_pagemap(file_name: str):
         pass
 
     return {"mapping": mapping, "total_pages": total_pages}
-
-
-@app.post("/api/score/pagemap/{file_name}")
 async def save_pagemap(file_name: str, request: "Request"):
     """
     Save page→segment mapping.
@@ -603,11 +502,6 @@ _SCORE_SYSTEM = """你是一位音乐理论分析助手，擅长从乐谱图像�
 - 旋律：依据音符走向判断轮廓，无法辨认时写"无法从乐谱确认"
 - 装饰音：仅计入乐谱明确印出的符号（tr、倚音斜线、回音括号等），不推断未标注的演奏习惯
 - 音符密度：目测估算两手音符总数除以小节数，标注为约略值；Adagio 段落加注书写值说明"""
-
-
-# ── /api/score/analyze — SSE stream ─────────────────────────────────
-
-@app.get("/api/score/analyze")
 async def analyze_score_stream(
     file_name: str = "",
     music_name: str = "",
@@ -1245,16 +1139,95 @@ def get_musicxml(file_name: str):
     }
 
 
-def _annotated_cache_path(file_name: str) -> Path:
-    """Cache path for annotated (skeleton-coloured) XML, stored in MUSICXML_DIR.
-    Works for both plain stems ("WAMozart_K265") and filenames ("WAMozart_K265.mxl").
+@app.get("/api/score/mxl_notes/{file_name}")
+def get_mxl_notes(file_name: str):
     """
-    stem = Path(file_name).stem if "." in file_name else file_name
-    stem = re.sub(r"_\d+$", "", stem)   # strip trailing version index if any
-    return MUSICXML_DIR / f"{stem}.annotated.xml"
+    Extract notes directly from MusicXML for in-browser Tone.js synthesis.
 
+    Returns:
+      { available: false }                         — no MusicXML found
+      { available: true, tempo_bpm, notes, segments }  — success
 
-@app.get("/api/score/annotated/{file_name}")
+    notes:    [{ pitch, start_sec, dur_sec, velocity }]
+    segments: [{ label, start_sec, end_sec }]
+    """
+    path = _find_musicxml(file_name)
+    if path is None:
+        return {"available": False}
+
+    try:
+        import music21
+    except ImportError:
+        return {"available": False}
+
+    try:
+        if path.suffix.lower() == ".mxl":
+            xml_bytes = _extract_mxl(path)
+            score = music21.converter.parseData(xml_bytes, format="musicxml")
+        else:
+            score = music21.converter.parse(str(path))
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+    # ── Tempo ────────────────────────────────────────────────────────────
+    tempo_bpm = 120.0
+    for el in score.flatten():
+        if isinstance(el, music21.tempo.MetronomeMark) and el.number:
+            tempo_bpm = float(el.number)
+            break
+    sec_per_qn = 60.0 / tempo_bpm   # seconds per quarter note
+
+    # ── Notes (all parts flattened, highest-velocity wins per-pitch per slot) ──
+    raw_notes: list[dict] = []
+    for part in score.parts:
+        for el in part.flatten().notesAndRests:
+            if isinstance(el, music21.note.Rest):
+                continue
+            pitches = el.pitches if isinstance(el, music21.chord.Chord) else [el.pitch]
+            vel = int(getattr(el, "volume", None) and el.volume.velocity or 64)
+            for p in pitches:
+                raw_notes.append({
+                    "pitch":     p.midi,
+                    "start_sec": round(float(el.offset) * sec_per_qn, 4),
+                    "dur_sec":   round(float(el.duration.quarterLength) * sec_per_qn, 4),
+                    "velocity":  vel,
+                })
+
+    raw_notes.sort(key=lambda n: n["start_sec"])
+
+    # ── Segment boundaries from rehearsal / section marks ───────────────
+    mxml_secs = _get_musicxml_sections(file_name)   # [(label, measure_idx), ...]
+    segments: list[dict] = []
+
+    if mxml_secs:
+        # Map measure index → offset in quarter notes
+        part0    = score.parts[0] if score.parts else None
+        measures = list(part0.getElementsByClass("Measure")) if part0 else []
+        idx_to_qn: dict[int, float] = {}
+        for mi, m in enumerate(measures):
+            idx_to_qn[mi] = float(m.offset)
+        total_dur_sec = max((n["start_sec"] + n["dur_sec"] for n in raw_notes), default=0.0)
+
+        for si, (label, m_idx) in enumerate(mxml_secs):
+            start_qn  = idx_to_qn.get(m_idx, 0.0)
+            start_sec = round(start_qn * sec_per_qn, 3)
+            if si + 1 < len(mxml_secs):
+                next_qn  = idx_to_qn.get(mxml_secs[si + 1][1], start_qn)
+                end_sec  = round(next_qn * sec_per_qn, 3)
+            else:
+                end_sec  = round(total_dur_sec, 3)
+            segments.append({"label": label, "start_sec": start_sec, "end_sec": end_sec})
+    else:
+        # No section marks — expose whole piece as a single segment
+        total_dur_sec = max((n["start_sec"] + n["dur_sec"] for n in raw_notes), default=0.0)
+        segments = [{"label": "Full", "start_sec": 0.0, "end_sec": round(total_dur_sec, 3)}]
+
+    return {
+        "available": True,
+        "tempo_bpm": round(tempo_bpm, 2),
+        "notes":     raw_notes,
+        "segments":  segments,
+    }
 def get_annotated_score(file_name: str):
     """
     Return MusicXML with skeleton notes (highest-pitch per 0.5-beat slot)
@@ -2690,12 +2663,17 @@ def get_midi_notes(file_name: str, n_variations: int | None = None):
                 seg_idx = k
         n["seg"] = seg_idx
 
+    # Average tempo in BPM (weighted by note count in each tempo region)
+    avg_tempo_us = tempo_map[-1][1] if len(tempo_map) > 1 else tempo_map[0][1]
+    tempo_bpm    = round(60_000_000 / avg_tempo_us, 2)
+
     return {
         "matched":       True,
         "file_name":     file_name,
         "beats_per_bar": beats_per_bar,
         "total_beats":   round(total_beats, 2),
         "total_bars":    total_bars,
+        "tempo_bpm":     tempo_bpm,
         "segments":      segments,
         "notes":         raw_notes,
     }
@@ -2962,9 +2940,6 @@ def _compute_mda_analysis(midi_path: "Path", n_variations: int | None = None) ->
         "n_segments": n_segs,
         "segments":   segments_out,
     }
-
-
-@app.get("/api/midi/mda/{file_name}")
 def get_mda_analysis(file_name: str, n_variations: int | None = None):
     """MDA penalty analysis (Almada 2023 §3.5): kp, kt, kh, k, band, type per variation."""
     midi_path = _find_midi_file(file_name)
@@ -3008,9 +2983,6 @@ def _pc_to_degree(pc: int, root: int, mode: str) -> int:
         if d < best_dist:
             best_dist, best_idx = d, i
     return best_idx
-
-
-@app.get("/api/midi/chord_degrees/{file_name}")
 def get_chord_degrees(file_name: str, n_variations: int | None = None):
     """
     Per-segment scale-degree distribution for Circos-style harmony visualization.
@@ -3143,19 +3115,6 @@ def get_chord_degrees(file_name: str, n_variations: int | None = None):
         "n_segments": len(segments_out),
         "segments":   segments_out,
     }
-
-
-# ── T4 Theme Tracing ─────────────────────────────────────────────────────────
-#
-#   GET /api/midi/theme_trace/{file_name}?n_variations=N
-#
-#   Extract the theme's skeleton melody (highest-pitch note per 0.5-beat slot),
-#   then fuzzy-match each skeleton note into every variation segment.
-#
-#   Matching score = pos_dist * 2  −  pc_match_bonus  +  octave_dist * 0.3
-#   Confidence     = max(0, 1 − score)   (higher = better match)
-
-@app.get("/api/midi/theme_trace/{file_name}")
 def get_theme_trace(file_name: str, n_variations: int | None = None):
     midi_path = _find_midi_file(file_name)
     if midi_path is None:
@@ -3357,8 +3316,6 @@ INTERVAL_NAMES = [
     "P8",  # 12 octave
     ">8",  # 13 larger than octave
 ]
-
-@app.get("/api/midi/intervals/{file_name}")
 def get_midi_intervals(file_name: str):
     """
     Return melodic interval distribution for the given piece's MIDI file.
@@ -3467,10 +3424,6 @@ NOTE_NAMES_FLAT  = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"]
 
 # Use flat spelling for keys with flats (F, Bb, Eb, Ab, Db, Gb majors)
 _FLAT_ROOTS = {5, 10, 3, 8, 1, 6}
-
-def _pc_name(pc: int, root: int) -> str:
-    return NOTE_NAMES_FLAT[pc] if root in _FLAT_ROOTS else NOTE_NAMES_SHARP[pc]
-
 def _ks_detect(notes_in_seg: list[dict]) -> tuple[int, str]:
     """Return (root 0-11, 'major'|'minor') for a list of note dicts."""
     _KS_MAJ = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88]
@@ -3493,9 +3446,6 @@ def _ks_detect(notes_in_seg: list[dict]) -> tuple[int, str]:
             if r > best_r:
                 best_r, best_root, best_mode = r, root, mode
     return best_root, best_mode
-
-
-@app.get("/api/midi/chromaticism/{file_name}")
 def get_midi_chromaticism(file_name: str, n_variations: int | None = None):
     """
     Per-section chromaticism analysis from MIDI.
@@ -3676,13 +3626,6 @@ def get_midi_chromaticism(file_name: str, n_variations: int | None = None):
         "midi_name":  midi_path.name,
         "sections":   sections,
     }
-
-
-# ──────────────────────────────────────────────────────────────
-#  Rhythmic Density Profile
-# ──────────────────────────────────────────────────────────────
-
-@app.get("/api/midi/rhythm_density/{file_name}")
 def get_midi_rhythm_density(file_name: str, n_variations: int | None = None):
     """
     Per-section rhythmic density from MIDI.
@@ -3818,54 +3761,6 @@ def get_midi_rhythm_density(file_name: str, n_variations: int | None = None):
         "categories": CATEGORIES,
         "sections":   sections,
     }
-
-
-# ──────────────────────────────────────────────────────────────
-#  Chord Palette
-# ──────────────────────────────────────────────────────────────
-
-def _classify_chord(pcs: set[int]) -> str:
-    """
-    Given a set of pitch-classes, return a chord type label.
-    Tries all 12 roots for each pattern.
-    """
-    if len(pcs) < 2:
-        return "single"
-
-    # Interval sets relative to root (sorted intervals from root)
-    patterns: list[tuple[str, set]] = [
-        ("major",    {0, 4, 7}),
-        ("minor",    {0, 3, 7}),
-        ("dim",      {0, 3, 6}),
-        ("aug",      {0, 4, 8}),
-        ("sus2",     {0, 2, 7}),
-        ("sus4",     {0, 5, 7}),
-        ("dom7",     {0, 4, 7, 10}),
-        ("maj7",     {0, 4, 7, 11}),
-        ("min7",     {0, 3, 7, 10}),
-        ("dim7",     {0, 3, 6, 9}),
-        ("halfdim7", {0, 3, 6, 10}),
-        ("augmaj7",  {0, 4, 8, 11}),
-    ]
-
-    for root in range(12):
-        normalized = {(pc - root) % 12 for pc in pcs}
-        for name, pat in patterns:
-            # Pattern must be a subset of or equal to normalized (allow added notes)
-            if pat.issubset(normalized) or normalized == pat:
-                return name
-
-    # Dyad fallback: interval
-    if len(pcs) == 2:
-        interval = min((b - a) % 12 for a in pcs for b in pcs if b != a)
-        if interval in (3, 4):   return "third"
-        if interval in (5, 7):   return "fifth"
-        return "dyad"
-
-    return "other"
-
-
-@app.get("/api/midi/chord_palette/{file_name}")
 def get_midi_chord_palette(file_name: str, n_variations: int | None = None):
     """
     Per-section chord type distribution from MIDI.
@@ -3988,28 +3883,6 @@ def get_midi_chord_palette(file_name: str, n_variations: int | None = None):
         "chord_types": CHORD_TYPES,
         "sections":    sections,
     }
-
-
-# ──────────────────────────────────────────────────────────────
-#  Rubato Curve  (/api/rubato/{file_name})
-# ──────────────────────────────────────────────────────────────
-
-def _find_audio_file(file_name: str) -> "Path | None":
-    """Search TV_dataset_audio/ subdirs for <file_name>.wav"""
-    if not AUDIO_DIR.exists():
-        return None
-    direct = AUDIO_DIR / f"{file_name}.wav"
-    if direct.exists():
-        return direct
-    for d in AUDIO_DIR.iterdir():
-        if d.is_dir():
-            p = d / f"{file_name}.wav"
-            if p.exists():
-                return p
-    return None
-
-
-@app.get("/api/rubato/{file_name}")
 def get_rubato(file_name: str, n_variations: int | None = None):
     """
     Rubato (expressive timing deviation) curve.
@@ -4214,26 +4087,6 @@ _INTERVAL_TENSION = {
     10: 0.60,   # minor 7th
     11: 0.80,   # major 7th
 }
-
-
-def _chord_tension(pitches: list[int]) -> float:
-    """
-    Mean pairwise interval dissonance for a set of pitches.
-    Returns a value in [0, 1].
-    """
-    pcs = list({p % 12 for p in pitches})
-    if len(pcs) < 2:
-        return 0.0
-    total, count = 0.0, 0
-    for i in range(len(pcs)):
-        for j in range(i + 1, len(pcs)):
-            iv = min((pcs[j] - pcs[i]) % 12, (pcs[i] - pcs[j]) % 12)
-            total += _INTERVAL_TENSION.get(iv, 0.5)
-            count += 1
-    return round(total / count, 4) if count else 0.0
-
-
-@app.get("/api/midi/tension_ornament/{file_name}")
 def get_tension_ornament(file_name: str, n_variations: int | None = None):
     """
     Per-bar harmonic tension + ornament density from MIDI.
@@ -4402,14 +4255,6 @@ def get_tension_ornament(file_name: str, n_variations: int | None = None):
         "var_labels": var_labels,
         "ornament_thresh_beats": ORNAMENT_THRESH,
     }
-
-
-# ──────────────────────────────────────────────────────────────
-#  Bar Map  (/api/midi/barmap/{file_name})
-#  Returns per-bar start times (seconds) for playback tracking.
-# ──────────────────────────────────────────────────────────────
-
-@app.get("/api/midi/barmap/{file_name}")
 def get_barmap(file_name: str):
     """
     Returns an array `bars` where bars[i] = start time (seconds) of
@@ -5213,66 +5058,6 @@ AUDIO_ESTIMABLE_KEYS: set[str] = {
 # ── BasicPitch helpers ────────────────────────────────────────────────────────
 
 BP_CACHE_SUFFIX = "_bp_notes.json"   # stored under FEATURE_DIR
-
-
-def _find_audio_file(file_name: str) -> Path | None:
-    """Locate the WAV file for a given file_name (same logic as /api/audio/)."""
-    # Derive folder from file_name prefix (e.g. WAMozart_K265_1 → WAMozart_K265)
-    parts = file_name.split("_")
-    folder_guess = "_".join(parts[:-1]) if parts[-1].isdigit() else file_name
-    candidate = AUDIO_DIR / folder_guess / f"{file_name}.wav"
-    if candidate.exists():
-        return candidate
-    # Fallback: search all sub-directories
-    if AUDIO_DIR.exists():
-        for d in AUDIO_DIR.iterdir():
-            if d.is_dir():
-                p = d / f"{file_name}.wav"
-                if p.exists():
-                    return p
-    return None
-
-
-def _get_bp_notes(file_name: str) -> list[dict] | None:
-    """
-    Return BasicPitch note list for *file_name*, using a JSON cache.
-
-    Cache format: [{"s": start_sec, "e": end_sec, "p": midi_pitch}, …]
-
-    Returns None if audio file is missing or basic-pitch is not installed.
-    First call for a file takes ~20 s; subsequent calls are instant.
-    """
-    cache_path = FEATURE_DIR / f"{file_name}{BP_CACHE_SUFFIX}"
-    if cache_path.exists():
-        with open(cache_path, encoding="utf-8") as fh:
-            return json.load(fh)
-
-    audio_path = _find_audio_file(file_name)
-    if audio_path is None:
-        return None
-
-    try:
-        import warnings as _w
-        _w.filterwarnings("ignore")
-        from basic_pitch.inference import predict as _bp_predict
-        from basic_pitch import ICASSP_2022_MODEL_PATH as _BP_MODEL
-    except ImportError:
-        return None
-
-    try:
-        _, _, note_events = _bp_predict(str(audio_path), _BP_MODEL)
-    except Exception:
-        return None
-
-    notes = [
-        {"s": round(float(e[0]), 4), "e": round(float(e[1]), 4), "p": int(e[2])}
-        for e in note_events
-    ]
-    with open(cache_path, "w", encoding="utf-8") as fh:
-        json.dump(notes, fh)
-    return notes
-
-
 def _compute_bp_features(bp_notes: list[dict], seg_start: float, seg_end: float) -> dict:
     """
     Compute 6 pitch features from BasicPitch notes within [seg_start, seg_end).
@@ -5327,9 +5112,6 @@ def _compute_chroma_audio_symbolic(seg_feats: dict) -> dict:
     result["tonal_clarity"] = round(float(pc_feat.get("key_correlation", 0.0)), 6)
     result["note_density"] = round(float(seg_feats.get("onset_density", 0.0)), 6)
     return result
-
-
-@app.get("/api/symbolic_audio/{file_name}")
 def get_symbolic_audio_features(file_name: str):
     """
     Return audio-estimated symbolic features per segment.
@@ -5595,90 +5377,18 @@ def _extract_audio_segment(y, sr, label: str, compressed_frames: int = 64) -> di
         "onset_count":       onset_comp,
     }
 
-    # 10. pYIN pitch contour — same algorithm as add_pitch_contour.py
+    # 10. pYIN pitch contour — directly import from add_pitch_contour.py
+    #     to guarantee identical output to the dataset pipeline.
     try:
-        hop = 512
-        f0, voiced_flag, _ = librosa.pyin(
-            y,
-            fmin=librosa.note_to_hz("C3"),
-            fmax=librosa.note_to_hz("C7"),
-            frame_length=2048,
-            hop_length=hop,
-            sr=sr,
-        )
-        # Interpolate unvoiced frames so contour is continuous
-        valid_mask = voiced_flag & ~np.isnan(f0)
-        if valid_mask.sum() >= 4:
-            from scipy.interpolate import interp1d as _interp1d
-            t_arr    = np.arange(len(f0))
-            f_interp = _interp1d(
-                t_arr[valid_mask], f0[valid_mask],
-                kind="linear", fill_value="extrapolate", bounds_error=False,
-            )
-            f0_filled = f_interp(t_arr)
-        else:
-            f0_filled = np.full(max(len(f0), n), 261.63)
+        import importlib.util as _ilu
+        _apc_path = Path(__file__).parent / "add_pitch_contour.py"
+        _apc_spec = _ilu.spec_from_file_location("add_pitch_contour", _apc_path)
+        _apc      = _ilu.module_from_spec(_apc_spec)
+        _apc_spec.loader.exec_module(_apc)
 
-        f0_safe      = np.maximum(f0_filled, 1.0)
-        midi_contour = 69.0 + 12.0 * np.log2(f0_safe / 440.0)
-
-        # Tonic detection via Temperley templates (same as add_pitch_contour.py)
-        _TEMP_MAJOR = np.array([5,2,3.5,2,4.5,4,2,4.5,2,3.5,1.5,4], dtype=float)
-        _TEMP_MINOR = np.array([5,2,3.5,4.5,2,4,2,4.5,3.5,2,1.5,4], dtype=float)
-        chroma_arr  = np.array(feats.get("chroma_chromatic", [0.0]*12), dtype=float)
-        best_r, best_tonic = -np.inf, 0
-        for tonic in range(12):
-            for tmpl in (np.roll(_TEMP_MAJOR, tonic), np.roll(_TEMP_MINOR, tonic)):
-                r = float(np.corrcoef(chroma_arr, tmpl)[0, 1])
-                if r > best_r:
-                    best_r, best_tonic = r, tonic
-
-        # Compress to n frames (mean of each segment) — tonic-relative
-        def _compress(arr_1d, target):
-            arr = np.array(arr_1d, dtype=float)
-            if len(arr) == 0:
-                return [0.0] * target
-            idx = np.linspace(0, len(arr), target + 1, dtype=int)
-            return [float(np.mean(arr[idx[i]:idx[i+1]])) if idx[i+1] > idx[i] else 0.0
-                    for i in range(target)]
-
-        def _to_relative(vals, tonic_semitone):
-            return [v - (60 + tonic_semitone) for v in vals]
-
-        midi_compressed = _compress(midi_contour, n)
-        midi_relative   = _to_relative(midi_compressed, best_tonic)
-
-        # Beat-aligned sampling
-        try:
-            frame_times = librosa.frames_to_time(np.arange(len(f0)), sr=sr, hop_length=hop)
-            _, beat_frames = librosa.beat.beat_track(y=y, sr=sr, hop_length=hop)
-            beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop)
-        except Exception:
-            beat_times = np.linspace(0, len(y)/sr, 17)[:-1]
-            frame_times = librosa.frames_to_time(np.arange(len(f0)), sr=sr, hop_length=hop)
-
-        beat_midi: list[float] = []
-        for i, t_start in enumerate(beat_times):
-            t_end = beat_times[i+1] if i+1 < len(beat_times) else frame_times[-1]
-            mask  = (frame_times >= t_start) & (frame_times < t_end) & voiced_flag
-            if mask.sum() > 0:
-                beat_midi.append(float(np.median(midi_contour[mask])))
-            elif beat_midi:
-                beat_midi.append(beat_midi[-1])
-            else:
-                beat_midi.append(60.0 + best_tonic)
-
-        beat_midi_relative = _to_relative(beat_midi, best_tonic)
-
-        feats["pitch_contour"] = {
-            "n_frames":           n,
-            "midi":               midi_compressed,
-            "midi_relative":      midi_relative,
-            "beat_midi":          beat_midi,
-            "beat_midi_relative": beat_midi_relative,
-            "voiced_ratio":       round(float(np.sum(voiced_flag) / max(len(voiced_flag), 1)), 3),
-            "tonic_semitone":     best_tonic,
-        }
+        chroma_chromatic = feats.get("chroma_chromatic", [0.0] * 12)
+        pc = _apc.extract_pitch_contour(y, sr, chroma_chromatic, n)
+        feats["pitch_contour"] = pc
     except Exception as _e:
         print(f"  [upload] pitch_contour failed: {_e}")
         feats["pitch_contour"] = {"beat_midi": [], "midi_relative": [], "n_frames": n, "midi": []}
@@ -5867,6 +5577,29 @@ async def upload_and_process(
                     seg["features"]["pitch_contour"] = pc_list[i]
 
             segments_out.append(seg)
+
+        # 3b. Score pitch contour from MusicXML (score_beat_midi_relative — highest priority)
+        #     Mirrors add_score_pitch.py so uploaded MXL produces the same priority-1 data
+        #     as dataset pieces.  MXL is already copied to MUSICXML_DIR as tmp_mxl_stem.
+        if has_mxl and tmp_mxl_stem is not None:
+            try:
+                import importlib.util as _ilu2
+                _asp_path = Path(__file__).parent / "add_score_pitch.py"
+                _asp_spec = _ilu2.spec_from_file_location("add_score_pitch", _asp_path)
+                _asp      = _ilu2.module_from_spec(_asp_spec)
+                _asp_spec.loader.exec_module(_asp)
+
+                score_contours = _asp._build_score_contours(tmp_mxl_stem)
+                if score_contours:
+                    for seg in segments_out:
+                        lk = _asp._label_key(seg["label"])
+                        if lk in score_contours:
+                            if "pitch_contour" not in seg["features"]:
+                                seg["features"]["pitch_contour"] = {}
+                            seg["features"]["pitch_contour"].update(score_contours[lk])
+                            print(f"  [upload] score pitch → {seg['label']} beats={len(score_contours[lk].get('score_beat_midi', []))}")
+            except Exception as _e:
+                print(f"  [upload] score pitch contour failed: {_e}")
 
         # 4. Determine available_views
         if has_mxl:
