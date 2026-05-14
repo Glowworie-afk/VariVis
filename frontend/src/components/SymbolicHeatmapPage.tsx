@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { API_BASE } from '../api/pieceApi'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -438,7 +439,7 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
   useEffect(() => {
     if (!fileName) return
     setLoading(true); setError(null); setData(null)
-    fetch(`/api/symbolic/${fileName}`)
+    fetch(`${API_BASE}/symbolic/${fileName}`)
       .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail ?? r.statusText) }))
       .then(midi => { setData(midi as SymbolicResponse); setLoading(false) })
       .catch(e => { setError(e.message); setLoading(false) })

@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
 import type { Lang } from '../App'
+import { API_BASE } from '../api/pieceApi'
 
 interface Props {
   data:     PieceData
@@ -18,7 +19,7 @@ interface Props {
 
 type Status = 'idle' | 'loading' | 'ready' | 'not_found' | 'error'
 
-const API = 'http://localhost:8000'
+const API = API_BASE.replace(/\/api$/, '')
 
 export function ScorePage({ data, theme, isDark, lang, fileName, composer }: Props) {
   const [status,    setStatus]    = useState<Status>('idle')
