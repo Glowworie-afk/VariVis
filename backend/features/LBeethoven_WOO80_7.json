@@ -2092,7 +2092,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.7681
+          "score_key_correlation": 0.7681,
+          "score_pitch_class_profile": [
+            0.233721,
+            0.0,
+            0.044767,
+            0.079942,
+            0.0625,
+            0.140988,
+            0.059593,
+            0.161047,
+            0.110465,
+            0.036047,
+            0.034884,
+            0.036047
+          ]
         }
       }
     },
@@ -4144,7 +4158,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.7054
+          "score_key_correlation": 0.7054,
+          "score_pitch_class_profile": [
+            0.185629,
+            0.035928,
+            0.041916,
+            0.095808,
+            0.047904,
+            0.11976,
+            0.05988,
+            0.227545,
+            0.071856,
+            0.035928,
+            0.035928,
+            0.041916
+          ]
         }
       }
     },
@@ -6162,7 +6190,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.7778
+          "score_key_correlation": 0.7778,
+          "score_pitch_class_profile": [
+            0.2,
+            0.04,
+            0.066667,
+            0.08,
+            0.06,
+            0.08,
+            0.053333,
+            0.18,
+            0.053333,
+            0.066667,
+            0.013333,
+            0.106667
+          ]
         }
       }
     },
@@ -8194,7 +8236,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.8032
+          "score_key_correlation": 0.8032,
+          "score_pitch_class_profile": [
+            0.206522,
+            0.054348,
+            0.117391,
+            0.081522,
+            0.0,
+            0.094565,
+            0.021739,
+            0.097826,
+            0.094565,
+            0.054348,
+            0.058696,
+            0.118478
+          ]
         }
       }
     },
@@ -10226,7 +10282,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.8078
+          "score_key_correlation": 0.8078,
+          "score_pitch_class_profile": [
+            0.242424,
+            0.060606,
+            0.072727,
+            0.072727,
+            0.016162,
+            0.074747,
+            0.032323,
+            0.19798,
+            0.080808,
+            0.036364,
+            0.044444,
+            0.068687
+          ]
         }
       }
     },
@@ -12260,7 +12330,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.7511
+          "score_key_correlation": 0.7511,
+          "score_pitch_class_profile": [
+            0.191977,
+            0.005731,
+            0.080229,
+            0.057307,
+            0.074499,
+            0.071633,
+            0.068768,
+            0.180516,
+            0.034384,
+            0.08596,
+            0.057307,
+            0.091691
+          ]
         }
       }
     },
@@ -14292,7 +14376,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.8795
+          "score_key_correlation": 0.8795,
+          "score_pitch_class_profile": [
+            0.201258,
+            0.012579,
+            0.062893,
+            0.150943,
+            0.037736,
+            0.08805,
+            0.025157,
+            0.213836,
+            0.069182,
+            0.044025,
+            0.018868,
+            0.075472
+          ]
         }
       }
     },
@@ -16380,7 +16478,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.7307
+          "score_key_correlation": 0.7307,
+          "score_pitch_class_profile": [
+            0.175953,
+            0.01173,
+            0.120235,
+            0.052786,
+            0.014663,
+            0.11437,
+            0.014663,
+            0.214076,
+            0.058651,
+            0.079179,
+            0.041056,
+            0.102639
+          ]
         }
       }
     },
@@ -18454,7 +18566,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.7252
+          "score_key_correlation": 0.7252,
+          "score_pitch_class_profile": [
+            0.170667,
+            0.0,
+            0.130667,
+            0.064,
+            0.032,
+            0.093333,
+            0.034667,
+            0.226667,
+            0.032,
+            0.069333,
+            0.034667,
+            0.112
+          ]
         }
       }
     },
@@ -20528,7 +20654,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.5053
+          "score_key_correlation": 0.5053,
+          "score_pitch_class_profile": [
+            0.184,
+            0.024,
+            0.08,
+            0.088,
+            0.024,
+            0.08,
+            0.008,
+            0.152,
+            0.096,
+            0.096,
+            0.072,
+            0.096
+          ]
         }
       }
     },
@@ -22596,7 +22736,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.7738
+          "score_key_correlation": 0.7738,
+          "score_pitch_class_profile": [
+            0.174419,
+            0.037209,
+            0.167442,
+            0.083721,
+            0.025581,
+            0.074419,
+            0.027907,
+            0.148837,
+            0.055814,
+            0.062791,
+            0.02093,
+            0.12093
+          ]
         }
       }
     },
@@ -24684,7 +24838,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.82
+          "score_key_correlation": 0.82,
+          "score_pitch_class_profile": [
+            0.173656,
+            0.0,
+            0.147595,
+            0.071784,
+            0.035537,
+            0.10969,
+            0.028429,
+            0.192608,
+            0.057569,
+            0.061597,
+            0.009476,
+            0.112059
+          ]
         }
       }
     },
@@ -26658,7 +26826,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.7361
+          "score_key_correlation": 0.7361,
+          "score_pitch_class_profile": [
+            0.285714,
+            0.0,
+            0.0,
+            0.0,
+            0.190476,
+            0.0,
+            0.0,
+            0.428571,
+            0.0,
+            0.047619,
+            0.0,
+            0.047619
+          ]
         }
       }
     },

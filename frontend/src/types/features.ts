@@ -62,12 +62,13 @@ export interface SegmentFeatures {
 
 export interface PitchContourData {
   // ── Score-MIDI derived (preferred) — added by add_score_pitch.py ──
-  score_beat_midi?:          number[]  // [N]  highest note per beat (absolute MIDI)
-  score_beat_midi_relative?: number[]  // [N]  semitones from tonic  (0 = tonic)
-  score_tonic_semitone?:     number    // 0=C … 11=B
-  score_tonic_name?:         string    // "C", "G", "F#" …
-  score_is_major?:           boolean
-  score_key_correlation?:    number    // Temperley fit quality
+  score_beat_midi?:            number[]  // [N]  highest note per beat (absolute MIDI)
+  score_beat_midi_relative?:   number[]  // [N]  semitones from tonic  (0 = tonic)
+  score_pitch_class_profile?:  number[]  // [12] duration-weighted PCP (chromatic order, sums to 1)
+  score_tonic_semitone?:       number    // 0=C … 11=B
+  score_tonic_name?:           string    // "C", "G", "F#" …
+  score_is_major?:             boolean
+  score_key_correlation?:      number    // Temperley fit quality
 
   // ── pYIN derived (legacy) — kept for backwards compat ──
   n_frames?: number

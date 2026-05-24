@@ -200,22 +200,30 @@ function computeKt(theme: Segment, seg: Segment): { kt: number; src: 'onset_coun
 
 /**
  * kh — Harmonic penalty (Almada §3.4)
- * Uses chroma_chromatic (12-dim) + key detection from pitch_contour / dominant_pitch.
- * wh = [45, 25, 15, 10, 5]
  *
- * Key root / mode source priority:
+ * Pitch-class distribution source priority (used for h3, h4, h5):
+ *   1. score_pitch_class_profile  (MusicXML duration-weighted PCP — preferred)
+ *   2. chroma_chromatic           (audio CQT chroma — fallback)
+ *
+ * Key root / mode source priority (used for h1, h2):
  *   1. score_tonic_semitone / score_is_major  (MIDI score — performance-independent)
  *   2. tonic_semitone / is_major              (pYIN audio-derived)
  *   3. dominant_pitch.cof_index               (chroma fallback)
+ *
+ * wh = [45, 25, 15, 10, 5]
  */
 function computeKh(theme: Segment, seg: Segment): number {
   const WH = [45, 25, 15, 10, 5]
-  const pc_t = theme.features.chroma_chromatic
-  const pc_v = seg.features.chroma_chromatic
 
   const cofToSemitone = (cof: number) => (cof * 7) % 12
   const pt = theme.features.pitch_contour
   const ps = seg.features.pitch_contour
+
+  // Prefer MusicXML PCP for h3/h4/h5; fall back to audio chroma when absent.
+  const pc_t = pt?.score_pitch_class_profile
+             ?? theme.features.chroma_chromatic
+  const pc_v = ps?.score_pitch_class_profile
+             ?? seg.features.chroma_chromatic
 
   // Prefer MIDI-score tonic → pYIN tonic → chroma fallback
   const root_t = pt?.score_tonic_semitone
@@ -412,7 +420,7 @@ function MdaTree({ data, segs, isDark, lang }: {
         fontSize:8, fontWeight:600, color:textC,
         textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6,
       }}>
-        {lang==='zh' ? ' MDA 派生树 · Prim MST (k 值距离)' : ' MDA Derivation Tree · Prim MST (penalty k)'}
+        {lang==='zh' ? ' 相似度树 · Prim MST (k 值距离)' : ' Similarity Tree · Prim MST (penalty k)'}
       </div>
 
       <div style={{ overflowX:'auto' }}>
@@ -560,10 +568,10 @@ function MdaTree({ data, segs, isDark, lang }: {
           </span>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
             {[
-              { col:'#10b981', sw:1.2, label: lang==='zh' ? 'k < 0.25  极相似' : 'k < 0.25  very similar' },
-              { col:'#f59e0b', sw:2.0, label: lang==='zh' ? '0.25–0.45  较相似' : '0.25–0.45  similar' },
-              { col:'#f97316', sw:2.8, label: lang==='zh' ? '0.45–0.65  中等差异' : '0.45–0.65  moderate' },
-              { col:'#ef4444', sw:3.8, label: lang==='zh' ? 'k > 0.65  差异大' : 'k > 0.65  divergent' },
+              { col:'#10b981', sw:1.2, label: lang==='zh' ? 'k < 0.30  极相似' : 'k < 0.30  very similar' },
+              { col:'#f59e0b', sw:2.0, label: lang==='zh' ? '0.30–0.50  较相似' : '0.30–0.50  similar' },
+              { col:'#f97316', sw:2.8, label: lang==='zh' ? '0.50–0.70  中等差异' : '0.50–0.70  moderate' },
+              { col:'#ef4444', sw:3.8, label: lang==='zh' ? 'k > 0.70  差异大' : 'k > 0.70  divergent' },
             ].map(b => (
               <div key={b.col} style={{ display:'flex', alignItems:'center', gap:4 }}>
                 <svg width={24} height={10} style={{ flexShrink:0 }}>

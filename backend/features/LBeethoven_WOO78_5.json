@@ -2240,7 +2240,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.8765
+          "score_key_correlation": 0.8765,
+          "score_pitch_class_profile": [
+            0.230284,
+            0.0,
+            0.104101,
+            0.0,
+            0.164038,
+            0.099895,
+            0.0,
+            0.292324,
+            0.006309,
+            0.055731,
+            0.0,
+            0.047319
+          ]
         }
       }
     },
@@ -4440,7 +4454,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.9446
+          "score_key_correlation": 0.9446,
+          "score_pitch_class_profile": [
+            0.175788,
+            0.0199,
+            0.139303,
+            0.006633,
+            0.140962,
+            0.145937,
+            0.011609,
+            0.164179,
+            0.016584,
+            0.084577,
+            0.00995,
+            0.084577
+          ]
         }
       }
     },
@@ -6636,7 +6664,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.9335
+          "score_key_correlation": 0.9335,
+          "score_pitch_class_profile": [
+            0.245431,
+            0.015666,
+            0.114883,
+            0.010444,
+            0.159269,
+            0.075718,
+            0.010444,
+            0.203655,
+            0.007833,
+            0.05483,
+            0.005222,
+            0.096606
+          ]
         }
       }
     },
@@ -8842,7 +8884,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.8963
+          "score_key_correlation": 0.8963,
+          "score_pitch_class_profile": [
+            0.240113,
+            0.011299,
+            0.127119,
+            0.0,
+            0.225989,
+            0.081921,
+            0.008475,
+            0.166667,
+            0.008475,
+            0.059322,
+            0.019774,
+            0.050847
+          ]
         }
       }
     },
@@ -11022,7 +11078,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.8268
+          "score_key_correlation": 0.8268,
+          "score_pitch_class_profile": [
+            0.235931,
+            0.030303,
+            0.112554,
+            0.0,
+            0.164502,
+            0.099567,
+            0.0,
+            0.214286,
+            0.017316,
+            0.047619,
+            0.034632,
+            0.04329
+          ]
         }
       }
     },
@@ -13306,7 +13376,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": false,
-          "score_key_correlation": 0.927
+          "score_key_correlation": 0.927,
+          "score_pitch_class_profile": [
+            0.219291,
+            0.017545,
+            0.098252,
+            0.149133,
+            0.007018,
+            0.133342,
+            0.007018,
+            0.161414,
+            0.045617,
+            0.018707,
+            0.038599,
+            0.104064
+          ]
         }
       }
     },
@@ -15584,7 +15668,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.8864
+          "score_key_correlation": 0.8864,
+          "score_pitch_class_profile": [
+            0.19558,
+            0.00663,
+            0.107182,
+            0.0,
+            0.203315,
+            0.081768,
+            0.00221,
+            0.223204,
+            0.026519,
+            0.055249,
+            0.020994,
+            0.077348
+          ]
         }
       }
     },
@@ -18108,7 +18206,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.8848
+          "score_key_correlation": 0.8848,
+          "score_pitch_class_profile": [
+            0.242986,
+            0.016367,
+            0.083453,
+            0.01295,
+            0.115468,
+            0.130576,
+            0.017086,
+            0.179496,
+            0.011331,
+            0.110252,
+            0.03723,
+            0.042806
+          ]
         }
       }
     },

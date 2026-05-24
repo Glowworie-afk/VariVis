@@ -2391,7 +2391,21 @@
           "score_tonic_semitone": 0,
           "score_tonic_name": "C",
           "score_is_major": true,
-          "score_key_correlation": 0.8739
+          "score_key_correlation": 0.8739,
+          "score_pitch_class_profile": [
+            0.193114,
+            0.001497,
+            0.158683,
+            0.0,
+            0.112275,
+            0.10479,
+            0.01497,
+            0.230539,
+            0.008982,
+            0.073353,
+            0.020958,
+            0.080838
+          ]
         }
       }
     },

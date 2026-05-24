@@ -231,7 +231,7 @@ function MiniGlyph({ g, isSelected, onClick, isDark, onPlay, isPlaying, showPlay
 const TABS: { id: DetailTab; en: string; zh: string; icon: string }[] = [
   { id: 'pitch',    en: 'Pitch',                     zh: '音高折线',  icon: '' },
   { id: 'rhythm',   en: 'Rhythm',                    zh: '节奏气泡',  icon: '' },
-  { id: 'mda',      en: 'Derivation Tree',           zh: '派生关系树',icon: '' },
+  { id: 'mda',      en: 'Similarity Tree',            zh: '相似度树',  icon: '' },
 ]
 
 

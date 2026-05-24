@@ -733,17 +733,19 @@ function PieceSection({
           </div>
         )}
       </div>
-      <div style={{ flexShrink: 0, width: 220 }}>
-        <AudioPlayer
-          src={audioSrc}
-          theme={theme}
-          onTimeUpdate={setAudioTime}
-          seekToRef={seekToRef}
-          pauseRef={pauseMainRef}
-          playRef={playMainRef}
-          onPlayingChange={setIsMainPlaying}
-        />
-      </div>
+      {viewState === 'ready' && (
+        <div style={{ flex: '0 0 220px', minWidth: 160, maxWidth: 320 }}>
+          <AudioPlayer
+            src={audioSrc}
+            theme={theme}
+            onTimeUpdate={setAudioTime}
+            seekToRef={seekToRef}
+            playRef={playMainRef}
+            pauseRef={pauseMainRef}
+            onPlayingChange={setIsMainPlaying}
+          />
+        </div>
+      )}
       <button className="vv-remove-btn" onClick={onRemove} title="Remove this piece">×</button>
     </div>
   )

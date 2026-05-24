@@ -156,17 +156,20 @@ def _build_score_contours(piece_stem: str) -> dict[int, dict] | None:
     if not score.parts:
         return None
 
-    # ── Collect all notes from ALL parts with their absolute offset (beats) ──
-    # offset unit in music21 is quarter notes from start of score
+    # ── Collect all notes from ALL parts with absolute offset + duration ──
+    # offset unit in music21 is quarter notes from start of score.
+    # duration is stored so that the per-section PCP can be duration-weighted.
     all_notes: list[dict] = []
     for part in score.parts:
         for el in part.flatten().notes:
             # el can be Note or Chord
-            pitches = [el.pitch.midi] if hasattr(el, "pitch") else [p.midi for p in el.pitches]
+            pitches  = [el.pitch.midi] if hasattr(el, "pitch") else [p.midi for p in el.pitches]
+            duration = float(el.duration.quarterLength)
             for midi in pitches:
                 all_notes.append({
-                    "offset": float(el.offset),   # quarter notes from start
-                    "pitch":  midi,
+                    "offset":   float(el.offset),   # quarter notes from start
+                    "pitch":    midi,
+                    "duration": duration,
                 })
     all_notes.sort(key=lambda n: n["offset"])
 
@@ -222,12 +225,23 @@ def _build_score_contours(piece_stem: str) -> dict[int, dict] | None:
             if off_start <= n["offset"] < off_end
         ]
 
-        # Pitch-class distribution for key detection
+        # ── Unweighted pitch-class count (for key detection only) ──
         pc = np.zeros(12)
         for n in seg_notes:
             pc[n["pitch"] % 12] += 1
         key_info = _detect_key(pc)
         tonic    = key_info["score_tonic_semitone"]
+
+        # ── Duration-weighted pitch-class profile (PCP) ──
+        # Each note contributes its quarterLength to its pitch class bin.
+        # Result is normalised so the 12 bins sum to 1.0, making it
+        # directly comparable to audio chroma_chromatic.
+        # Used by computeKh (Similarity Tree) for symbolic-only k_h.
+        pcp = np.zeros(12)
+        for n in seg_notes:
+            pcp[n["pitch"] % 12] += n.get("duration", 0.0)
+        pcp_sum = float(pcp.sum())
+        pcp_norm = (pcp / pcp_sum) if pcp_sum > 1e-9 else np.zeros(12)
 
         # Register floor (soprano filter)
         pitch_floor = float(np.percentile([n["pitch"] for n in seg_notes], 40)) \
@@ -252,8 +266,9 @@ def _build_score_contours(piece_stem: str) -> dict[int, dict] | None:
 
         rel = _to_relative(score_beat_midi, tonic)
         result[key] = {
-            "score_beat_midi":          [round(v, 2) for v in score_beat_midi],
-            "score_beat_midi_relative": rel,
+            "score_beat_midi":            [round(v, 2) for v in score_beat_midi],
+            "score_beat_midi_relative":   rel,
+            "score_pitch_class_profile":  [round(float(v), 6) for v in pcp_norm],
             **key_info,
         }
 
