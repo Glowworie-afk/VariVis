@@ -515,7 +515,7 @@ function MdaTree({ data, segs, isDark, lang }: {
                   <>
                     <text x={tipX+8} y={tipY+28} fontSize={7} fill={textC}>
                       {lang==='zh'?'祖代':'Parent'}: {data.segments[parentOf[i]]?.label ?? 'T'}
-                      {'  '}k={pe.k.toFixed(3)}{'  '}α={mdaSeg?.alpha.toFixed(1) ?? '—'}°
+                      {'  '}k={pe.k.toFixed(3)}{'  '}
                     </text>
                     <text x={tipX+8} y={tipY+40} fontSize={7} fill={textC}>
                       kp={pe.kp.toFixed(3)}  kt={pe.kt.toFixed(3)}  kh={pe.kh.toFixed(3)}
@@ -564,7 +564,7 @@ function MdaTree({ data, segs, isDark, lang }: {
         {/* Edge color scale */}
         <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
           <span style={{ fontSize:7.5, color:textC, fontWeight:600 }}>
-            {lang==='zh' ? '连线颜色 / 粗细 → 两段之间的惩罚值 k' : 'Line color / thickness → penalty k between two segments'}
+            {lang==='zh' ? '连线颜色 / 粗细 → 两段之间的惩罚值 k' : 'Line color → penalty k between two segments'}
           </span>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
             {[

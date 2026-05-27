@@ -473,7 +473,7 @@ export default function App() {
               <div style={{ padding: '28px 20px', textAlign: 'center', fontSize: 11, color: 'var(--vv-text-3)', lineHeight: 1.7 }}>
                 <div style={{ fontSize: 15, marginBottom: 6 }}>📊</div>
                 <div style={{ fontWeight: 600, color: 'var(--vv-text-2)', marginBottom: 4 }}>No data source</div>
-                <div>Feature Comparison Matrix requires a MusicXML file.</div>
+                <div>Feature Comparison Heatmap requires a MusicXML file.</div>
               </div>
             )
           ) : focusedPiece?.viewState === 'ready' ? (
@@ -733,8 +733,11 @@ function PieceSection({
           </div>
         )}
       </div>
+      {/* Hidden main AudioPlayer — kept mounted so playMainRef / pauseMainRef /
+          seekToRef get assigned. Segment Overview triggers playback through
+          these refs; the UI itself is hidden via display:none. */}
       {viewState === 'ready' && (
-        <div style={{ flex: '0 0 220px', minWidth: 160, maxWidth: 320 }}>
+        <div style={{ display: 'none' }}>
           <AudioPlayer
             src={audioSrc}
             theme={theme}

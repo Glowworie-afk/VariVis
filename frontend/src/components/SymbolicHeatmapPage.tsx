@@ -554,7 +554,7 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
 
       {/* ── 1. Header ──────────────────────────────────────────── */}
       <div style={{marginBottom:4}}>
-        <div style={{fontSize:15,fontWeight:700,color:'#1e293b'}}>Feature Comparison Matrix — {musicName ?? fileName}</div>
+        <div style={{fontSize:15,fontWeight:700,color:'#1e293b'}}>Feature Comparison Heatmap — {musicName ?? fileName}</div>
         <div style={{fontSize:11,color:'#94a3b8',marginTop:3}}>
           33 symbolic features · colour = z-score deviation of each variation from theme · click column to sort
         </div>
