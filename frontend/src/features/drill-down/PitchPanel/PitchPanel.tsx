@@ -1,6 +1,6 @@
 /**
- * PitchContourPage
- * ────────────────
+ * PitchPanel
+ * ────────────
  * Card-grid layout (mirrors ChromaRingPage).
  * Each card shows a compact pitch contour chart with:
  *   • Y axis: semitones from tonic, labeled T / P5 / 8va / 15va / 4↓
@@ -12,32 +12,29 @@
  */
 
 import { useState, useMemo } from 'react'
-import type { PieceData } from '../types/features'
-import type { ThemeTokens } from '../theme'
-import { useLang } from '../i18n/LangContext'
+import type { PieceData } from '../../../types/features'
+import type { ThemeTokens } from '../../../theme'
+import { useLang } from '../../../i18n/LangContext'
 import {
   getContourData,
   normaliseContour,
   contourToPath,
   contourToAreaPath,
   globalContourRange,
-} from '../utils/pitchContour'
-import { labelColor } from './PitchContour'
-import { ContourModal } from './ContourModal'
+} from '../../../utils/pitchContour'
+import { labelColor } from '../../../constants/colors'
+import { ContourModal } from './components/ContourModal'
 
 // ── Card chart dimensions ──────────────────────────────────────────
-const CW     = 220   // chart SVG inner width
-const CH     = 100   // chart SVG inner height
-const PAD_L  = 30    // space for Y-axis labels
+const CW     = 220
+const CH     = 100
+const PAD_L  = 30
 const PAD_R  = 6
 const PAD_T  = 6
 const PAD_B  = 6
 
 // Circle of fifths order (semitones): C G D A E B F# C# Ab Eb Bb F
 const COF_ORDER = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]
-
-/** Build a 12-bin pitch-class histogram from beat_midi values.
- *  Pass currentBeat=null for the full-segment static view. */
 
 /** Mini chroma ring rendered as an SVG <g>, placed in card top-right. */
 function MiniChromaRing({
@@ -52,14 +49,11 @@ function MiniChromaRing({
 
   return (
     <g>
-      {/* Background disc */}
       <circle cx={cx} cy={cy} r={r}
         fill={isDark ? 'rgba(15,23,42,0.72)' : 'rgba(248,250,252,0.80)'}
         stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}
         strokeWidth={0.6}
       />
-
-      {/* 12 wedge bars */}
       {COF_ORDER.map((pc, i) => {
         const angle = (i / N) * 2 * Math.PI - Math.PI / 2
         const val   = histogram[pc] / maxVal
@@ -81,13 +75,9 @@ function MiniChromaRing({
           />
         )
       })}
-
-      {/* Inner hole */}
       <circle cx={cx} cy={cy} r={innerR}
         fill={isDark ? 'rgba(15,23,42,0.85)' : 'rgba(248,250,252,0.90)'}
       />
-
-      {/* Live pulse dot */}
       {isLive && (
         <circle cx={cx} cy={cy} r={2.5} fill="#10b981" opacity={0.9}/>
       )}
@@ -100,7 +90,7 @@ const CARD_TICKS: { st: number; label: string }[] = [
   { st: 24, label: '15va' },
   { st: 12, label: '8va'  },
   { st:  7, label: 'P5'   },
-  { st:  0, label: 'T'    },   // replaced with tonicName when available
+  { st:  0, label: 'T'    },
   { st: -5, label: '4↓'   },
 ]
 
@@ -113,7 +103,6 @@ interface CardProps {
   isPrimary:   boolean
   isSecondary: boolean
   onClick: () => void
-  /** When true the chart SVG stretches to fill the card width */
   fillWidth?: boolean
 }
 
@@ -122,13 +111,11 @@ export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecond
   const norm   = useMemo(() => normaliseContour(cd.values, range), [cd.values, range])
   const col    = labelColor(segment.index)
 
-  // ── Static chroma ring ───────────────────────────────────────────
   const chromaHist: number[] = useMemo(() => {
     const ch = segment.features.chroma_chromatic
     return Array.isArray(ch) && ch.length === 12 ? ch : new Array(12).fill(0)
   }, [segment])
 
-  // Ring placement: top-right corner of SVG
   const RING_R  = 22
   const RING_CX = CW - PAD_R - RING_R - 2
   const RING_CY = PAD_T + RING_R + 2
@@ -144,7 +131,6 @@ export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecond
 
   const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'
 
-  // Tonic label (replace 'T' with actual note name when known)
   const tonicName = cd.tonicName
 
   const cardBorder = isPrimary
@@ -168,7 +154,6 @@ export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecond
         userSelect: 'none',
       }}
     >
-      {/* Top row: segment label + key badge */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6,
         fontFamily: theme.fontFamily,
@@ -196,10 +181,8 @@ export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecond
             color: theme.labelSecondaryColor, fontFamily: theme.fontFamily,
           }}>~chroma</span>
         )}
-
       </div>
 
-      {/* Chart SVG */}
       <svg
         width={fillWidth ? '100%' : CW}
         height={CH}
@@ -213,10 +196,9 @@ export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecond
           </clipPath>
         </defs>
 
-        {/* Y-axis tick lines + labels */}
         {CARD_TICKS.map(({ st, label: rawLabel }) => {
           const yNorm  = normSt(st)
-          if (yNorm < -0.02 || yNorm > 1.02) return null   // out of visible range
+          if (yNorm < -0.02 || yNorm > 1.02) return null
           const yPx    = PAD_T + yNorm * innerH
           const isTonic = st === 0
           const label   = isTonic ? (tonicName ?? 'T') : rawLabel
@@ -243,7 +225,6 @@ export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecond
           )
         })}
 
-        {/* Area fill */}
         {areaD && (
           <path
             d={areaD}
@@ -252,7 +233,6 @@ export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecond
           />
         )}
 
-        {/* Contour line */}
         {pathD && (
           <path
             d={pathD} fill="none"
@@ -262,7 +242,6 @@ export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecond
           />
         )}
 
-        {/* Chroma ring — top-right corner */}
         <MiniChromaRing
           cx={RING_CX} cy={RING_CY} r={RING_R}
           histogram={chromaHist}
@@ -315,7 +294,7 @@ interface Props {
   selectedSeg?: number | null
 }
 
-export function PitchContourPage({
+export function PitchPanel({
   data, theme, isDark,
   selectedSeg,
 }: Props) {
@@ -330,22 +309,17 @@ export function PitchContourPage({
 
   const handleClick = (i: number) => {
     if (primaryIdx === null) {
-      // Nothing selected → set as primary, open modal
       setPrimaryIdx(i)
       setSecondaryIdx(null)
       setModalOpen(true)
     } else if (i === primaryIdx) {
-      // Click primary again → open/reopen modal
       setModalOpen(true)
     } else if (i === secondaryIdx) {
-      // Click secondary → deselect it
       setSecondaryIdx(null)
     } else if (secondaryIdx === null) {
-      // Have primary, click another → set secondary, open overlay
       setSecondaryIdx(i)
       setModalOpen(true)
     } else {
-      // Have both → replace primary with clicked, clear secondary
       setPrimaryIdx(i)
       setSecondaryIdx(null)
       setModalOpen(true)
@@ -362,10 +336,8 @@ export function PitchContourPage({
   return (
     <div style={{ padding: '12px 10px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      {/* Legend */}
       <ContourLegend theme={theme} isDark={isDark} />
 
-      {/* Card grid */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
@@ -394,7 +366,6 @@ export function PitchContourPage({
         ))}
       </div>
 
-      {/* Hint when nothing selected */}
       {primaryIdx === null && (
         <div style={{
           textAlign: 'center', fontSize: 10,
@@ -407,7 +378,6 @@ export function PitchContourPage({
         </div>
       )}
 
-      {/* Modal */}
       {modalOpen && modalSegments && (
         <ContourModal
           segments={modalSegments}

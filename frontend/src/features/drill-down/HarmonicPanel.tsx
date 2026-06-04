@@ -1,5 +1,5 @@
 /**
- * MusicVisPage.tsx
+ * HarmonicPanel.tsx
  * ─────────────────
  * Score viewer with theme/variation section selector.
  * Renders MusicXML via OSMD; section pills filter which measures are drawn.
@@ -11,9 +11,9 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay'
-import type { ThemeTokens } from '../theme'
-import { useLang } from '../i18n/LangContext'
-import { API_BASE } from '../api/pieceApi'
+import type { ThemeTokens } from '../../theme'
+import { useLang } from '../../i18n/LangContext'
+import { API_BASE } from '../../api/pieceApi'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -63,8 +63,6 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme }: StatP
 
   const isAllMode = !activeSection
 
-  // When a section pill is active → show only that section's bar.
-  // When "All" is selected → show all Theme + Variation sections.
   const baseRows = activeSection
     ? [{ label: activeSection.label, start: activeSection.start_idx, end: activeSection.end_idx }]
     : sections
@@ -74,14 +72,12 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme }: StatP
         })
         .map(s => ({ label: s.label, start: s.start_idx, end: s.end_idx }))
 
-  // Pre-compute aggregates for sorting
   const rowsWithAgg = baseRows.map(row => {
     const ms = chordData.filter(m => m.seq >= row.start && m.seq < row.end)
     const tot = ms.length || 1
     const agg = { T: 0, S: 0, D: 0, O: 0 }
     ms.forEach(m => { agg.T += m.T; agg.S += m.S; agg.D += m.D; agg.O += m.O })
     ;(Object.keys(agg) as (keyof typeof agg)[]).forEach(k => { agg[k] /= tot })
-    // Normalise to exactly 1.0 so bars always fill 100% (counters float rounding)
     const aggSum = agg.T + agg.S + agg.D + agg.O || 1
     ;(Object.keys(agg) as (keyof typeof agg)[]).forEach(k => { agg[k] /= aggSum })
     return { ...row, agg, empty: ms.length === 0 }
@@ -99,7 +95,6 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme }: StatP
       padding:      '8px 10px 6px',
       marginBottom: 8,
     }}>
-      {/* Title row with collapse toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsed ? 0 : 6 }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: theme.labelColor }}>
           {t('和声功能分布', 'Harmonic Function Distribution')}
@@ -119,7 +114,6 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme }: StatP
 
       {!collapsed && (
         <>
-          {/* Legend — clickable sort buttons in All mode */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {(['T', 'S', 'D', 'O'] as const).map(fn => {
               const isActive = isAllMode && sortBy === fn
@@ -154,13 +148,11 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme }: StatP
             })}
           </div>
 
-          {/* Per-section bars */}
           {rows.map(row => {
             if (row.empty) return null
             const { agg } = row
             const label = row.label === 'Tema' ? t('主题', 'Theme') : row.label
 
-            // Put the active-sort segment first in the bar
             const fnOrder = (['T', 'S', 'D', 'O'] as const)
             const orderedFns = sortBy !== 'default'
               ? [sortBy, ...fnOrder.filter(f => f !== sortBy)] as const
@@ -206,7 +198,7 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme }: StatP
 
 interface Props { theme: ThemeTokens; xmlFile: string }
 
-export function MusicVisPage({ theme, xmlFile }: Props) {
+export function HarmonicPanel({ theme, xmlFile }: Props) {
   const lang = useLang()
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en
 
@@ -215,7 +207,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
   const [status,        setStatus]        = useState<'idle'|'fetching'|'rendering'|'ready'|'error'>('idle')
   const [errMsg,        setErrMsg]        = useState('')
 
-  // ── Harmonic Function view (fixed) ────────────────────────────────
   const view = 'harmonic' as const
   const [chordData,    setChordData]    = useState<ChordMeasure[]>([])
   const [chordKey,     setChordKey]     = useState('')
@@ -224,9 +215,8 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
 
   const containerRef = useRef<HTMLDivElement>(null)
   const osmdRef      = useRef<OpenSheetMusicDisplay | null>(null)
-  const xmlCacheRef  = useRef<string>('')   // cached XML text to avoid re-fetch on section change
+  const xmlCacheRef  = useRef<string>('')
 
-  // ── Fetch sections when file changes ──────────────────────────────
   useEffect(() => {
     if (!xmlFile) return
     setActiveSection(null)
@@ -239,7 +229,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
       .catch(() => {})
   }, [xmlFile])
 
-  // ── Fetch chord data when file changes ────────────────────────────
   useEffect(() => {
     if (!xmlFile) return
     setChordData([])
@@ -257,17 +246,10 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
       .finally(() => setChordLoading(false))
   }, [xmlFile])
 
-  // ── Inject / remove harmonic backgrounds in the OSMD SVG ──────────
-  // Inserts coloured <rect> elements as the very first child of the OSMD SVG
-  // so they appear behind all note heads, stems, and barlines.
-  // Each measure gets:
-  //   • a light fill covering the full system height (treble + bass staves)
-  //   • a thin solid strip at the bottom edge as a clean function indicator
   useEffect(() => {
     const svgEl = containerRef.current?.querySelector('svg')
     if (!svgEl) return
 
-    // Always clean up first
     svgEl.querySelector('#vv-harmonic-bg')?.remove()
 
     if (view !== 'harmonic' || status !== 'ready' || !chordData.length || !measurePos.length) return
@@ -281,7 +263,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
       if (!cm) return
       const fn = cm.function
 
-      // ① Light background fill — tints the full measure column
       const bg = document.createElementNS(ns, 'rect')
       bg.setAttribute('x',      String(mp.x))
       bg.setAttribute('y',      String(mp.y))
@@ -290,8 +271,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
       bg.setAttribute('fill',   FN_COLOR[fn] ?? 'transparent')
       g.appendChild(bg)
 
-      // ② Solid indicator strip at the bottom edge
-      // Coordinates are already × 10, so 15 SVG units ≈ 1.5 engraving units ≈ 1.5 mm
       const strip = document.createElementNS(ns, 'rect')
       strip.setAttribute('x',      String(mp.x))
       strip.setAttribute('y',      String(mp.y + mp.h - 15))
@@ -302,11 +281,9 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
       g.appendChild(strip)
     })
 
-    // insertBefore firstChild → rendered behind everything else in the SVG
     svgEl.insertBefore(g, svgEl.firstChild)
   }, [view, status, chordData, measurePos])
 
-  // ── OSMD render ────────────────────────────────────────────────────
   const renderOsmd = useCallback(async (
     xmlText: string,
     minMeasure: number,
@@ -314,14 +291,12 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
   ) => {
     if (!containerRef.current) return
 
-    // Tear down previous instance
     if (osmdRef.current) {
       try { (osmdRef.current as any).clear?.() } catch {}
       osmdRef.current = null
     }
     containerRef.current.innerHTML = ''
 
-    // Make container visible BEFORE render so OSMD can measure clientWidth
     setStatus('rendering')
     await new Promise<void>(resolve => {
       let c = 0
@@ -335,7 +310,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
       drawingParameters: 'default',
       colorStemsLikeNoteheads: false,
       disableCursor: true,
-      // Suppress title / composer — shown via the file selector above instead.
       drawTitle:    false,
       drawSubtitle: false,
       drawComposer: false,
@@ -346,27 +320,12 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
     try {
       await osmd.load(xmlText)
 
-      // Apply section measure filter.
-      //
-      // OSMD has two ways to specify the draw range:
-      //   • MaxMeasureToDrawNumber / MinMeasureToDrawNumber  (1-based "number" variants)
-      //   • MaxMeasureToDrawIndex  / MinMeasureToDrawIndex   (0-based array index variants)
-      //
-      // render() only overwrites MaxMeasureToDrawIndex from MaxMeasureToDrawNumber when the
-      // first SourceMeasure is an ImplicitMeasure (pickup bar).  For pieces that start on a
-      // downbeat (no pickup), ImplicitMeasure=false and MaxMeasureToDrawIndex is NEVER updated,
-      // so it stays at the default Number.MAX_VALUE and all measures are drawn.
-      //
-      // Fix: always set MaxMeasureToDrawIndex directly as well, so section filtering works
-      // regardless of whether the piece has a pickup bar.
-      // MinMeasureToDrawIndex is always safe to set directly (its Number variant defaults to 0,
-      // condition > 1 is false, so it is never overwritten by render()).
       const rules = (osmd as any).EngravingRules ?? (osmd as any).rules
       if (rules) {
         const hi = maxMeasure >= 9999 ? Number.MAX_VALUE : maxMeasure - 1
         rules.MinMeasureToDrawIndex  = minMeasure
-        rules.MaxMeasureToDrawIndex  = hi   // set directly — works for pieces without pickup
-        rules.MaxMeasureToDrawNumber = hi   // also set Number variant — for pieces WITH pickup
+        rules.MaxMeasureToDrawIndex  = hi
+        rules.MaxMeasureToDrawNumber = hi
       }
 
       await osmd.render()
@@ -376,9 +335,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
 
     osmdRef.current = osmd
 
-    // ── Extract measure bounding boxes (all staves) ───────────────
-    // Covers the full piano system (treble + bass) by spanning from the top of
-    // the first staff to the bottom of the last staff in each measure column.
     try {
       const gSheet = (osmd as any).GraphicSheet
       const posList: MeasurePos[] = []
@@ -388,7 +344,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
           if (maxMeasure < 9999 && i >= maxMeasure) return
           if (!staffMeasures?.length) return
 
-          // Collect all staves with valid position data
           const valid = staffMeasures.filter(
             m => m?.PositionAndShape?.AbsolutePosition && m?.PositionAndShape?.Size?.width > 0
           )
@@ -397,14 +352,10 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
           const first = valid[0].PositionAndShape
           const last  = valid[valid.length - 1].PositionAndShape
 
-          // OSMD renders SVG positions as AbsolutePosition * unitInPixels (= 10).
-          // The SVG viewBox is set to container_px / zoom, so multiplying by 10
-          // puts our rects in the same coordinate space as the OSMD content.
           const U = 10
           const x = first.AbsolutePosition.x * U
           const y = first.AbsolutePosition.y * U
           const w = first.Size.width * U
-          // Height: top of first staff → bottom of last staff (covers full piano system)
           const h = (last.AbsolutePosition.y + last.Size.height - first.AbsolutePosition.y) * U
 
           if (w <= 0 || h <= 0) return
@@ -413,13 +364,12 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
       }
       setMeasurePos(posList)
     } catch (_) {
-      // Silently ignore — harmonic overlay just won't show
+      // Silently ignore
     }
 
     setStatus('ready')
   }, [])
 
-  // ── Fetch XML + render on file or section change ───────────────────
   useEffect(() => {
     if (!xmlFile) return
     const min = activeSection?.start_idx ?? 0
@@ -443,18 +393,15 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
 
   const containerVisible = status === 'rendering' || status === 'ready'
 
-  // ── Render ─────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '10px 14px', fontFamily: theme.fontFamily, height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
 
-      {/* ── Top bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 10, color: theme.labelSecondaryColor, marginLeft: 'auto', fontStyle: 'italic' }}>
           {xmlFile}
         </span>
       </div>
 
-      {/* ── Key + loading indicator ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         {chordKey && (
           <span style={{ fontSize: 9, color: theme.labelSecondaryColor }}>
@@ -468,7 +415,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
         )}
       </div>
 
-      {/* ── Section pills ── */}
       {sections.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
           <button
@@ -507,7 +453,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
         </div>
       )}
 
-      {/* ── Harmonic stats chart (harmonic view only, theme+variation sections only) ── */}
       {view === 'harmonic' && !chordLoading && chordData.length > 0 &&
        sections.some(s => { const l = s.label.toLowerCase(); return l.startsWith('tema') || l.startsWith('theme') || l.startsWith('var') }) && (
         <HarmonicStatsChart
@@ -518,7 +463,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
         />
       )}
 
-      {/* ── Status messages ── */}
       {status === 'fetching' && (
         <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 11, color: theme.labelSecondaryColor }}>
           {t('⏳ 获取乐谱…', '⏳ Fetching score…')}
@@ -535,7 +479,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
         </div>
       )}
 
-      {/* ── Score area ── */}
       <div
         ref={containerRef}
         style={{
@@ -551,7 +494,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
         }}
       />
 
-      {/* ── Colour legend (harmonic view) ── */}
       {view === 'harmonic' && containerVisible && (
         <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
           {(['T', 'S', 'D', 'O'] as const).map(fn => (
@@ -571,7 +513,6 @@ export function MusicVisPage({ theme, xmlFile }: Props) {
           ))}
         </div>
       )}
-
 
     </div>
   )

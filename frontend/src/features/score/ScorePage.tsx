@@ -1,19 +1,18 @@
 // ScorePage.tsx
 //  Sheet Music View — serves matched IMSLP PDF via iframe
-// Backend fuzzy-matches file_name → IMSLP/*.pdf by catalog number (K/KV, WoO, Op, Hob)
 
 import { useEffect, useState, type ReactNode } from 'react'
-import type { PieceData } from '../types/features'
-import type { ThemeTokens } from '../theme'
-import { useLang } from '../i18n/LangContext'
-import { API_BASE } from '../api/pieceApi'
+import type { PieceData } from '../../types/features'
+import type { ThemeTokens } from '../../theme'
+import { useLang } from '../../i18n/LangContext'
+import { API_BASE } from '../../api/pieceApi'
 
 interface Props {
   data:     PieceData
   theme:    ThemeTokens
   isDark:   boolean
   fileName: string
-  composer?: string   // passed from PieceMeta for richer not-found hints
+  composer?: string
 }
 
 type Status = 'idle' | 'loading' | 'ready' | 'not_found' | 'error'
@@ -36,7 +35,6 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
     setMatchedFile('')
     setAvailable([])
 
-    // First do a dry-run match to get metadata, then build the pdf URL
     fetch(`${API}/api/score/match?file_name=${encodeURIComponent(fileName)}&music_name=${encodeURIComponent(data.metadata.music_name ?? '')}`)
       .then(r => r.json())
       .then(json => {
@@ -47,7 +45,6 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
           return
         }
         setMatchedFile(json.pdf_name ?? '')
-        // Build direct PDF URL — browser will render inline
         const url = `${API}/api/score/pdf/${encodeURIComponent(fileName)}`
         setPdfUrl(url)
         setStatus('ready')
@@ -98,7 +95,6 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
         )}
       </div>
 
-      {/* ── Loading ── */}
       {status === 'loading' && (
         <CenterBox>
           <Spinner />
@@ -108,7 +104,6 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
         </CenterBox>
       )}
 
-      {/* ── Not found ── */}
       {status === 'not_found' && (
         <CenterBox>
           <span style={{ fontSize: 26, marginBottom: 8 }}></span>
@@ -116,7 +111,6 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
             {t('暂无匹配乐谱', 'No matching score found')}
           </span>
 
-          {/* Composer-specific hint */}
           {composer && (
             <span style={{
               fontSize: 11, fontWeight: 600, marginBottom: 4,
@@ -155,7 +149,6 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
             )}
           </span>
 
-          {/* Show what's currently in IMSLP/ */}
           {available.length > 0 && (
             <div style={{ marginTop: 14, fontSize: 9, color: theme.labelSecondaryColor, maxWidth: 440 }}>
               <div style={{ marginBottom: 4, fontWeight: 600 }}>
@@ -181,7 +174,6 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
         </CenterBox>
       )}
 
-      {/* ── Error ── */}
       {status === 'error' && (
         <CenterBox>
           <span style={{ fontSize: 22, marginBottom: 6 }}></span>
@@ -191,7 +183,6 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
         </CenterBox>
       )}
 
-      {/* ── PDF iframe ── */}
       {status === 'ready' && pdfUrl && (
         <iframe
           src={`${pdfUrl}#toolbar=1&navpanes=0`}

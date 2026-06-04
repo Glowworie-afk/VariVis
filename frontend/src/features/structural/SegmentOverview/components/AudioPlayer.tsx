@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef, useState, useEffect, useCallback } from 'react'
-import type { ThemeTokens } from '../theme'
+import type { ThemeTokens } from '../../../../theme'
 
 // Imperative handle exposed to parent components via ref.
 export interface AudioPlayerHandle {
@@ -23,7 +23,6 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
     const [duration, setDuration] = useState(0)
     const [loading,  setLoading]  = useState(true)
 
-    // Stable ref so imperative methods never capture a stale onPlayingChange closure
     const onPlayingChangeRef = useRef(onPlayingChange)
     useEffect(() => { onPlayingChangeRef.current = onPlayingChange })
 
@@ -103,7 +102,6 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
           preload="metadata"
         />
 
-        {/* Play / Pause */}
         <button
           onClick={togglePlay}
           disabled={loading}
@@ -118,7 +116,6 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
           {loading ? '…' : (playing ? '⏸' : '▶')}
         </button>
 
-        {/* Current time */}
         <span style={{
           fontSize: 10, color: theme.labelSecondaryColor,
           fontFamily: 'monospace', minWidth: 30, textAlign: 'right', flexShrink: 0,
@@ -126,7 +123,6 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
           {fmt(current)}
         </span>
 
-        {/* Seek bar */}
         <div style={{ flex: 1, minWidth: 60, position: 'relative', height: 16, display: 'flex', alignItems: 'center' }}>
           <div style={{
             position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
@@ -146,7 +142,6 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
           />
         </div>
 
-        {/* Duration */}
         <span style={{
           fontSize: 10, color: theme.labelSecondaryColor,
           fontFamily: 'monospace', minWidth: 30, flexShrink: 0,

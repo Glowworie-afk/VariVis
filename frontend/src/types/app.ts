@@ -3,11 +3,7 @@ import type { PieceData } from './features'
 
 export type Lang = 'zh' | 'en'
 
-export type PieceTab =
-  | 'corpus_view'
-  | 'overview'
-  | 'mentallandscape'
-  | 'symbolic_heatmap'
+export type PieceTab = 'corpus_view'
 
 export type PieceViewState = 'loading' | 'ready' | 'not-extracted' | 'error'
 

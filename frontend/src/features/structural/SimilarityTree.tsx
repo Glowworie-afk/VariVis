@@ -1,19 +1,11 @@
-// MdaAnalysisPage.tsx
+// SimilarityTree.tsx
 // Almada (2023) MDA Penalty Analysis — Ch.1-3
 // Computes kp / kt / kh / k entirely from pre-extracted audio features.
-// No MIDI file required.
-//
-// Data sources (all from features JSON):
-//   kp → pitch_contour.beat_midi (pYIN beat-aligned absolute MIDI)
-//        fallback: chroma_chromatic cosine distance
-//   kt → compressed.onset_count[64] (per-frame rhythm profile)
-//        + onset_density, rhythm_regularity, tempo scalars
-//   kh → chroma_chromatic, dominant_pitch, pitch_contour.tonic_semitone/is_major
 
 import { useMemo, useState } from 'react'
-import type { PieceData, Segment } from '../types/features'
-import type { ThemeTokens } from '../theme'
-import { useLang } from '../i18n/LangContext'
+import type { PieceData, Segment } from '../../types/features'
+import type { ThemeTokens } from '../../theme'
+import { useLang } from '../../i18n/LangContext'
 
 interface Props {
   data:   PieceData
@@ -54,8 +46,6 @@ const TYPE_META: Record<string, {
                desc:'Grundgestalt — referential',  descZh:'基础乐思 (Grundgestalt)' },
 }
 
-
-/** Penalty-to-heatmap colour: low k = green, mid = amber, high = red */
 function kColor(k: number): string {
   if (k <= 0)   return TYPE_META.reference.color
   if (k < 0.30) return '#10b981'
@@ -66,7 +56,6 @@ function kColor(k: number): string {
 
 // ── MDA computation ───────────────────────────────────────────────────────────
 
-/** Normalised dot product of two 12-dim chroma vectors */
 function chromaCos(a: number[], b: number[]): number {
   const dot = a.reduce((s, v, i) => s + v * b[i], 0)
   const ma = Math.sqrt(a.reduce((s, v) => s + v * v, 0))
@@ -74,30 +63,20 @@ function chromaCos(a: number[], b: number[]): number {
   return ma > 0 && mb > 0 ? dot / (ma * mb) : 0
 }
 
-/** Pitch ranks (melodic contour): 0 = lowest pitch in sequence */
 function contourRanks(seq: number[]): number[] {
   const sorted = [...new Set(seq)].sort((a, b) => a - b)
   const rm = new Map(sorted.map((v, i) => [v, i]))
   return seq.map(x => rm.get(x) ?? 0)
 }
 
-/**
- * kp — Pitch penalty (Almada §3.2)
- * Source priority:
- *   1. score_beat_midi  (MIDI score — performance-independent, preferred)
- *   2. beat_midi        (pYIN beat-aligned — audio-derived)
- *   3. chroma cosine    (fallback when no pitch sequence available)
- */
 function computeKp(theme: Segment, seg: Segment): { kp: number; src: 'pyin' | 'chroma' | 'midi' } {
   const pc_t = theme.features.pitch_contour
   const pc_s = seg.features.pitch_contour
 
-  // ── MIDI score path (performance-independent) ──
   const useScoreMidi =
     pc_t?.score_beat_midi && pc_t.score_beat_midi.length > 2 &&
     pc_s?.score_beat_midi && pc_s.score_beat_midi.length > 2
 
-  // ── pYIN path (audio-derived, fallback when no score MIDI) ──
   const usePyin = !useScoreMidi &&
     pc_t?.beat_midi && pc_t.beat_midi.length > 2 &&
     pc_s?.beat_midi && pc_s.beat_midi.length > 2 &&
@@ -123,14 +102,10 @@ function computeKp(theme: Segment, seg: Segment): { kp: number; src: 'pyin' | 'c
     const c5 = Math.max(...c1) - Math.min(...c1)
     const v5 = Math.abs(c5 - p5)
 
-    // Rule 1: octave transposition in intervals → 12 → 4
     v3 = v3.map(x => x === 12 ? 4 : x)
-    // Rule 2: uniform transposition → replace v1,v2 with 2s
     if (new Set(v1).size === 1 && v1[0] > 0) { v1 = Array(n).fill(2); v2 = Array(n).fill(2) }
-    // Rule 3: inversion → v3 ≈ 2×original intervals → 3
     if (v3.length > 0 && pi.filter((p, i) => Math.abs(v3[i] - 2*Math.abs(p)) < 2).length > v3.length*0.6)
       v3 = Array(v3.length).fill(3)
-    // Rule 4: contour inversion → constant row sum → v4 = 1s
     if (n > 1 && new Set(p4.map((_, i) => p4[i] + c4[i])).size === 1)
       v4 = Array(n).fill(1)
 
@@ -141,16 +116,10 @@ function computeKp(theme: Segment, seg: Segment): { kp: number; src: 'pyin' | 'c
     return { kp: Math.min(1, kp_raw / kp_max), src: useScoreMidi ? 'midi' : 'pyin' }
   }
 
-  // ── Chroma fallback ──
   const cos = chromaCos(theme.features.chroma_chromatic, seg.features.chroma_chromatic)
   return { kp: Math.min(1, (1 - cos) * 1.5), src: 'chroma' }
 }
 
-/**
- * kt — Temporal penalty (Almada §3.3)
- * Primary: compressed.onset_count[64] frame comparison (L1 distance on rhythm profile)
- * + scalar supplements (onset_density, rhythm_regularity, tempo)
- */
 function computeKt(theme: Segment, seg: Segment): { kt: number; src: 'onset_count' | 'scalars' } {
   const oc_t = theme.features.compressed.onset_count
   const oc_v = seg.features.compressed.onset_count
@@ -158,31 +127,24 @@ function computeKt(theme: Segment, seg: Segment): { kt: number; src: 'onset_coun
   if (oc_t && oc_v && oc_t.length > 0) {
     const n = Math.min(oc_t.length, oc_v.length)
     const maxVal = Math.max(...oc_t.slice(0,n), ...oc_v.slice(0,n), 1)
-    // L1 normalised distance = IOI profile difference (maps to Σv2/wt IOI component)
     const profile_diff = oc_t.slice(0,n).reduce((s, v, i) => s + Math.abs(v - oc_v[i]) / maxVal, 0) / n
 
-    // Onset density ratio (maps to note duration v1 component)
     const od_t = theme.features.onset_density
     const od_v = seg.features.onset_density
     const od_diff = Math.abs(od_t - od_v) / Math.max(od_t, od_v, 0.01)
 
-    // Rhythm regularity (maps to metric contour v3 component)
     const rr_t = theme.features.rhythm_regularity ?? 0.5
     const rr_v = seg.features.rhythm_regularity ?? 0.5
     const rr_diff = Math.abs(rr_t - rr_v)
 
-    // Tempo (maps to temporal span v4)
     const tm_t = theme.features.tempo
     const tm_v = seg.features.tempo
     const tm_diff = Math.abs(tm_t - tm_v) / Math.max(tm_t, tm_v, 1)
 
-    // Weights inspired by wt=[15,45,30,10]:
-    //  od → v1 (15%), profile → v2 (45%), rr → v3 (30%), tm → v4 (10%)
     const kt = Math.min(1, 0.15*od_diff + 0.45*profile_diff + 0.30*rr_diff + 0.10*tm_diff)
     return { kt, src: 'onset_count' }
   }
 
-  // ── Scalar-only fallback ──
   const od_t = theme.features.onset_density
   const od_v = seg.features.onset_density
   const rr_t = theme.features.rhythm_regularity ?? 0.5
@@ -197,20 +159,6 @@ function computeKt(theme: Segment, seg: Segment): { kt: number; src: 'onset_coun
   return { kt, src: 'scalars' }
 }
 
-/**
- * kh — Harmonic penalty (Almada §3.4)
- *
- * Pitch-class distribution source priority (used for h3, h4, h5):
- *   1. score_pitch_class_profile  (MusicXML duration-weighted PCP — preferred)
- *   2. chroma_chromatic           (audio CQT chroma — fallback)
- *
- * Key root / mode source priority (used for h1, h2):
- *   1. score_tonic_semitone / score_is_major  (MIDI score — performance-independent)
- *   2. tonic_semitone / is_major              (pYIN audio-derived)
- *   3. dominant_pitch.cof_index               (chroma fallback)
- *
- * wh = [45, 25, 15, 10, 5]
- */
 function computeKh(theme: Segment, seg: Segment): number {
   const WH = [45, 25, 15, 10, 5]
 
@@ -218,13 +166,11 @@ function computeKh(theme: Segment, seg: Segment): number {
   const pt = theme.features.pitch_contour
   const ps = seg.features.pitch_contour
 
-  // Prefer MusicXML PCP for h3/h4/h5; fall back to audio chroma when absent.
   const pc_t = pt?.score_pitch_class_profile
              ?? theme.features.chroma_chromatic
   const pc_v = ps?.score_pitch_class_profile
              ?? seg.features.chroma_chromatic
 
-  // Prefer MIDI-score tonic → pYIN tonic → chroma fallback
   const root_t = pt?.score_tonic_semitone
     ?? pt?.tonic_semitone
     ?? cofToSemitone(theme.features.dominant_pitch.cof_index)
@@ -232,16 +178,12 @@ function computeKh(theme: Segment, seg: Segment): number {
     ?? ps?.tonic_semitone
     ?? cofToSemitone(seg.features.dominant_pitch.cof_index)
 
-  // Prefer MIDI-score mode → pYIN mode → default major
   const mode_t = pt?.score_is_major ?? pt?.is_major ?? true
   const mode_v = ps?.score_is_major ?? ps?.is_major ?? true
 
-  // h1: key root within 1 semitone → 0 (same), else 1
   const h1 = Math.min(Math.abs(root_v - root_t), 12 - Math.abs(root_v - root_t)) <= 1 ? 0 : 1
-  // h2: mode mismatch
   const h2 = mode_t === mode_v ? 0 : 1
 
-  // Tonic triad pitch classes
   const tonicPcs = (root: number, major: boolean): number[] => [
     root % 12, (root + (major ? 4 : 3)) % 12, (root + 7) % 12
   ]
@@ -251,21 +193,15 @@ function computeKh(theme: Segment, seg: Segment): number {
   const tpc_t = tonicPcs(root_t, mode_t)
   const tpc_v = tonicPcs(root_v, mode_v)
 
-  // h3: tonic function proportion difference > 0.15
   const tProp = (pc: number[], pcs: number[]) => pcs.reduce((s, p) => s + pc[p], 0)
   const h3 = Math.abs(tProp(pc_t, tpc_t) - tProp(pc_v, tpc_v)) > 0.15 ? 1 : 0
-
-  // h4: dominant function proportion difference > 0.15
   const h4 = Math.abs(tProp(pc_t, domPcs(root_t)) - tProp(pc_v, domPcs(root_v))) > 0.15 ? 1 : 0
-
-  // h5: chroma cosine similarity < 0.85
   const h5 = chromaCos(pc_t, pc_v) >= 0.85 ? 0 : 1
 
   const vh = [h1, h2, h3, h4, h5]
   return vh.reduce((s, v, i) => s + v * WH[i], 0) / 100
 }
 
-/** Map penalty k → similarity band (Almada Table 1.1, π/8 increments) */
 function similarityBand(k: number): string {
   if (k <= 0) return 'identity'
   const alpha = (Math.atan((1-k)/k) * 180) / Math.PI
@@ -276,7 +212,6 @@ function similarityBand(k: number): string {
   return 'null'
 }
 
-/** Classify dominant domain */
 function varType(kp: number, kt: number, kh: number): string {
   const vals: Record<string,number> = { melodic: kp, rhythmic: kt, harmonic: kh }
   const dom = Object.entries(vals).sort((a,b) => b[1]-a[1])[0][0]
@@ -285,7 +220,6 @@ function varType(kp: number, kt: number, kh: number): string {
   return dom
 }
 
-/** Compute all MDA segments from PieceData */
 function computeMda(data: PieceData): MdaSegment[] {
   const segs = data.segments
   const theme = segs[0]
@@ -313,23 +247,12 @@ function computeMda(data: PieceData): MdaSegment[] {
   })
 }
 
-// ── Derivative Space SVG ──────────────────────────────────────────────────────
-
-// ── Penalty bar ───────────────────────────────────────────────────────────────
-
-// ── Domain proportion bar ────────────────────────────────────────────────────
-
-// ── Ternary plot ─────────────────────────────────────────────────────────────
-// Corners: kp = top, kt = bottom-left, kh = bottom-right
-// Point (p,t,h) normalized → barycentric → Cartesian
-
 // ── MDA Genealogy Tree ────────────────────────────────────────────────────────
 
 interface TreeEdge { from:number; to:number; k:number; kp:number; kt:number; kh:number }
 
 function buildMdaTree(_segs: MdaSegment[], data: PieceData): TreeEdge[] {
   const N = data.segments.length
-  // Build pairwise k matrix
   const pairs: { kp:number; kt:number; kh:number; k:number }[][] =
     Array.from({ length: N }, () => Array(N).fill({ kp:0, kt:0, kh:0, k:0 }))
   for (let i = 0; i < N; i++)
@@ -342,9 +265,8 @@ function buildMdaTree(_segs: MdaSegment[], data: PieceData): TreeEdge[] {
       const r = { kp: Math.round(kp*1000)/1000, kt: Math.round(kt*1000)/1000,
                   kh: Math.round(kh*1000)/1000, k: Math.round(k*1000)/1000 }
       pairs[i][j] = r; pairs[j][i] = r
-      void kp_src // used only to satisfy linter
+      void kp_src
     }
-  // Prim's MST rooted at 0 (Theme)
   const edges: TreeEdge[] = []
   const visited = new Set<number>([0])
   while (visited.size < N) {
@@ -370,8 +292,6 @@ function MdaTree({ data, segs, isDark }: {
   const [hov, setHov] = useState<number|null>(null)
   const edges = useMemo(() => buildMdaTree(segs, data), [segs, data])
 
-
-  // Build tree structure
   const childrenOf: Record<number,number[]> = {}
   const parentOf:   Record<number,number>   = {}
   const parentEdge: Record<number,TreeEdge> = {}
@@ -382,7 +302,6 @@ function MdaTree({ data, segs, isDark }: {
     parentEdge[e.to] = e
   })
 
-  // BFS depth
   const depthOf: Record<number,number> = { 0: 0 }
   const q = [0]
   while (q.length) {
@@ -391,7 +310,6 @@ function MdaTree({ data, segs, isDark }: {
   }
   const maxDepth = Math.max(0, ...Object.values(depthOf))
 
-  // Reingold-Tilford layout
   const NODE_W = 38, GAP = 12, MARGIN = 28, ROW_H = Math.max(60, Math.min(90, 380/Math.max(maxDepth,1)))
   const subtreeW: Record<number,number> = {}
   function calcW(n: number): number {
@@ -426,7 +344,6 @@ function MdaTree({ data, segs, isDark }: {
       <div style={{ overflowX:'auto' }}>
         <svg width={SVG_W} height={SVG_H} style={{ display:'block', overflow:'visible' }}>
 
-          {/* Generation bands */}
           {Array.from({ length: maxDepth+1 }, (_,d) => {
             const by = 32 + d*ROW_H - ROW_H*0.44
             return (
@@ -440,7 +357,6 @@ function MdaTree({ data, segs, isDark }: {
             )
           })}
 
-          {/* Edges */}
           {edges.map((e, ei) => {
             const fx=nx[e.from], fy=ny[e.from]+(e.from===0?12:9)
             const tx=nx[e.to],   ty=ny[e.to]-9
@@ -460,7 +376,6 @@ function MdaTree({ data, segs, isDark }: {
             )
           })}
 
-          {/* Nodes — circles + labels only, no tooltip here */}
           {data.segments.map((seg, i) => {
             const x=nx[i]??SVG_W/2, y=ny[i]??32
             const isTheme=i===0, r=isTheme?12:9
@@ -490,7 +405,6 @@ function MdaTree({ data, segs, isDark }: {
             )
           })}
 
-          {/* Tooltip layer — rendered last so it always sits on top */}
           {hov !== null && (() => {
             const i=hov
             const seg=data.segments[i]
@@ -559,9 +473,7 @@ function MdaTree({ data, segs, isDark }: {
         </svg>
       </div>
 
-      {/* Legend */}
       <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:6, alignItems:'flex-start' }}>
-        {/* Edge color scale */}
         <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
           <span style={{ fontSize:7.5, color:textC, fontWeight:600 }}>
             {lang==='zh' ? '连线颜色 / 粗细 → 两段之间的惩罚值 k' : 'Line color → penalty k between two segments'}
@@ -582,7 +494,6 @@ function MdaTree({ data, segs, isDark }: {
             ))}
           </div>
         </div>
-        {/* Hover hint */}
         <div style={{
           fontSize:7.5, color:textC, paddingLeft:8,
           borderLeft:`1px solid ${isDark?'#334155':'#e2e8f0'}`,
@@ -599,7 +510,7 @@ function MdaTree({ data, segs, isDark }: {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function MdaAnalysisPage({ data, theme, isDark }: Props) {
+export function SimilarityTree({ data, theme, isDark }: Props) {
   const segs = useMemo(() => computeMda(data), [data])
 
   return (

@@ -6,8 +6,8 @@ import type { UploadState } from '../hooks/useUpload'
 import { useLang, useT } from '../i18n/LangContext'
 import { perfVersion, pieceTitle, catalogNum, groupPieces } from '../utils/pieceHelpers'
 import { COMPOSER_GROUPS } from '../constants/pieces'
-import SymbolicHeatmapPage from './SymbolicHeatmapPage'
-import UploadModal from './UploadModal'
+import { SymbolicHeatmap } from '../features/feature-overview/SymbolicHeatmap'
+import UploadModal from '../features/extraction/UploadModal'
 
 interface SidebarProps {
   pieceList:       PieceListState
@@ -18,7 +18,7 @@ interface SidebarProps {
   focusedPiece:    LoadedPiece | undefined
 }
 
-export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focusedPiece }: SidebarProps) {
+export function PieceView({ pieceList, loaded, nav, upload, loadedFileNames, focusedPiece }: SidebarProps) {
   const t    = useT()
   const lang = useLang()
 
@@ -170,7 +170,7 @@ export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focus
       <div style={{ flex: '0 0 auto', overflow: 'hidden', display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--vv-border)' }}>
         {uploadFocused && uploadedPiece ? (
           uploadedPiece.available_views.includes('symbolic_heatmap') ? (
-            <SymbolicHeatmapPage fileName={uploadedPiece.temp_name} musicName={uploadedPiece.music_name} />
+            <SymbolicHeatmap fileName={uploadedPiece.temp_name} musicName={uploadedPiece.music_name} />
           ) : (
             <div style={{ padding: '28px 20px', textAlign: 'center', fontSize: 11, color: 'var(--vv-text-3)', lineHeight: 1.7 }}>
               <div style={{ fontSize: 15, marginBottom: 6 }}>📊</div>
@@ -179,7 +179,7 @@ export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focus
             </div>
           )
         ) : focusedPiece?.viewState === 'ready' ? (
-          <SymbolicHeatmapPage fileName={focusedPiece.meta.file_name} />
+          <SymbolicHeatmap fileName={focusedPiece.meta.file_name} />
         ) : (
           <div style={{ padding: 40, fontSize: 11, color: 'var(--vv-text-3)', textAlign: 'center' }}>
             Select a piece to view the heatmap

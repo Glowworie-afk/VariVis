@@ -1,18 +1,15 @@
-// RhythmBubblePage.tsx
+// RhythmPanel.tsx
 // Bubble timeline — one row per variation, 32 time windows.
 //
 // Encoding:
 //   CIRCLE SIZE    = local RMS energy mean      (loud → big)
 //   CIRCLE OPACITY = local onset density /s     (fast → opaque)
 //   TEXT IN CIRCLE = onset density value (x.x)  (shown when circle large enough)
-//
-// Opacity uses per-window onset density (onsets/sec) when onset_count is available
-// after re-extraction, otherwise falls back to segment-level average (uniform per row).
 
 import { useState } from 'react'
-import type { PieceData } from '../types/features'
-import type { getTheme } from '../theme'
-import { useLang } from '../i18n/LangContext'
+import type { PieceData } from '../../types/features'
+import type { getTheme } from '../../theme'
+import { useLang } from '../../i18n/LangContext'
 
 interface Props {
   data:        PieceData
@@ -42,8 +39,8 @@ const SVG_W = PAD_H + LABEL_W + TIMELINE_W + RIGHT_W + PAD_H
 
 interface BubbleData {
   meanRms:      number
-  onsetDensity: number   // onsets/sec for this window (primary opacity driver)
-  deltaRms:     number   // fallback when onset_count absent
+  onsetDensity: number
+  deltaRms:     number
 }
 
 function computeBubbles(
@@ -90,7 +87,7 @@ interface TooltipInfo {
 
 // ── Component ────────────────────────────────────────────────────────
 
-export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
+export function RhythmPanel({ data, theme, isDark, selectedSeg }: Props) {
   const lang = useLang()
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null)
 
@@ -108,27 +105,18 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
     return computeBubbles(s.features.compressed.rms, s.features.compressed.onset_count, winDur)
   })
 
-  // Size: global max RMS
   const globalMaxRms = Math.max(
     ...allBubbles.flatMap(bb => bb.map(b => b.meanRms)), 0.001,
   )
 
-  // Opacity uses an absolute scale anchored at 10 onsets/sec:
-  //   <1/s  → nearly invisible (~0.04–0.10)
-  //   5/s   → mid  (~0.50)
-  //   ≥10/s → nearly opaque (capped at 0.92)
-  // This gives large visual contrast across the 1–8/s range present in the data.
   const densityToOpacity = (d: number) => Math.min(0.92, Math.max(0.04, d / 10))
 
-  // For the |ΔRMS| fallback, keep relative normalisation since |ΔRMS| has no
-  // intuitive absolute unit — just map it to the same [0.04, 0.92] range.
   const globalMaxDelta = hasOnsetData
-    ? 1   // unused
+    ? 1
     : Math.max(...allBubbles.flatMap(bb => bb.map(b => b.deltaRms)), 0.001)
   const deltaToOpacity = (d: number) =>
     Math.min(0.92, Math.max(0.04, (d / globalMaxDelta) * 0.88))
 
-  // Right-side density bar
   const allDensities = segments.map(s => s.features.onset_density)
   const minDensity   = Math.min(...allDensities)
   const maxDensity   = Math.max(...allDensities)
@@ -145,7 +133,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
   return (
     <div style={{ fontFamily: theme.fontFamily }}>
 
-      {/* ── Title ── */}
       <div style={{
         display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 8,
         padding: '8px 14px 4px',
@@ -160,7 +147,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
         </span>
       </div>
 
-      {/* ── Re-extract banner ── */}
       {!hasOnsetData && (
         <div style={{
           margin: '0 14px 6px',
@@ -175,7 +161,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
         </div>
       )}
 
-      {/* ── SVG ── */}
       <svg
         viewBox={`0 0 ${SVG_W} ${svgH}`}
         width="100%"
@@ -184,7 +169,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
         onMouseLeave={() => setTooltip(null)}
       >
 
-        {/* X-axis guides */}
         {timeTicks.map(pct => {
           const x      = PAD_H + LABEL_W + pct * TIMELINE_W
           const bottom = PAD_TOP + numRows * (ROW_H + ROW_GAP) - ROW_GAP
@@ -205,7 +189,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
           )
         })}
 
-        {/* Right column header */}
         <text
           x={PAD_H + LABEL_W + TIMELINE_W + 8} y={PAD_TOP - 9}
           fontSize={8} fill={theme.labelSecondaryColor} opacity={0.7}
@@ -213,7 +196,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
           {lang === 'zh' ? '段均密度' : 'Avg density'}
         </text>
 
-        {/* ── Rows ── */}
         {segments.map((seg, rowIdx) => {
           const bubbles  = allBubbles[rowIdx]
           const hue      = rowHue(seg.label, rowIdx, numRows)
@@ -228,15 +210,13 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
           const strokeColor = hue !== null
             ? `hsla(${hue},68%,${isDark ? 70 : 34}%,0.35)`
             : `rgba(${isDark ? '200,200,210' : '90,90,104'},0.35)`
-          // Text color: light on dark bubble, dark on light bubble
           const textColor = isDark
             ? 'rgba(255,255,255,0.92)'
             : (hue !== null ? `hsl(${hue},70%,18%)` : 'rgba(0,0,0,0.75)')
 
-          // Without onset_count: opacity is uniform per row (segment average)
           const segOpacity = hasOnsetData
-            ? null   // per-bubble: computed below
-            : densityToOpacity(density)   // fallback: uniform per row using segment avg
+            ? null
+            : densityToOpacity(density)
 
           const rowY0 = PAD_TOP + rowIdx * (ROW_H + ROW_GAP)
           const isRowSelected = selectedSeg === rowIdx
@@ -251,7 +231,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
                 />
               )}
 
-              {/* Center axis */}
               <line
                 x1={PAD_H + LABEL_W} y1={rowCY}
                 x2={PAD_H + LABEL_W + TIMELINE_W} y2={rowCY}
@@ -259,7 +238,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
                 strokeWidth={1}
               />
 
-              {/* Row label */}
               <text
                 x={PAD_H + LABEL_W - 6} y={rowCY + 4}
                 textAnchor="end"
@@ -270,7 +248,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
                 {seg.label}
               </text>
 
-              {/* Bubbles */}
               {bubbles.map((b, bi) => {
                 const r = Math.sqrt(b.meanRms / globalMaxRms) * MAX_R
                 if (r < 1.2) return null
@@ -283,7 +260,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
                     ? densityToOpacity(b.onsetDensity)
                     : deltaToOpacity(b.deltaRms)
 
-                // Density label inside circle — only when circle is large enough
                 const labelVal  = hasOnsetData ? b.onsetDensity : null
                 const showLabel = labelVal !== null && r >= 9
                 const labelStr  = labelVal !== null
@@ -338,7 +314,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
                 )
               })}
 
-              {/* Right: segment avg density bar */}
               <rect
                 x={PAD_H + LABEL_W + TIMELINE_W + 8} y={rowCY - 3}
                 width={80} height={6}
@@ -362,7 +337,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
           )
         })}
 
-        {/* ── Tooltip ── */}
         {tooltip && (() => {
           const TW = 220, TH = tooltip.hasOnsetData ? 56 : 44
           const tx = Math.min(tooltip.svgX + 12, SVG_W - TW - 4)
@@ -401,14 +375,12 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
 
       </svg>
 
-      {/* ── Legend ── */}
       <div style={{
         display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 20,
         padding: '6px 16px 14px',
         fontSize: 9, color: theme.labelSecondaryColor,
       }}>
 
-        {/* Size */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <svg width={86} height={24} style={{ overflow: 'visible' }}>
             {([5, 10, 16, 23] as number[]).map((r, i) => (
@@ -422,7 +394,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
           <span>{lang === 'zh' ? '大小 = 响度（RMS）' : 'Size = loudness (RMS)'}</span>
         </div>
 
-        {/* Opacity */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <svg width={100} height={24} style={{ overflow: 'visible' }}>
             {([0.18, 0.38, 0.60, 0.86] as number[]).map((op, i) => (
@@ -440,7 +411,6 @@ export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
           </span>
         </div>
 
-        {/* Reading guide */}
         <div style={{
           display: 'flex', flexDirection: 'column', gap: 2,
           padding: '2px 8px', borderRadius: 4,

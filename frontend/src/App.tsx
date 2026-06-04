@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { getTheme } from './theme'
 import type { Lang } from './types/app'
-import type { UploadResult } from './components/UploadModal'
+import type { UploadResult } from './features/extraction/UploadModal'
 import { COMPOSER_GROUPS } from './constants/pieces'
 import { LangProvider } from './i18n/LangContext'
 
@@ -11,13 +11,33 @@ import { useAppNav }        from './hooks/useAppNav'
 import { useLoadedPieces }  from './hooks/useLoadedPieces'
 import { usePieceList }     from './hooks/usePieceList'
 
-import { Sidebar }           from './components/Sidebar'
-import { ScorePanel }        from './components/ScorePanel'
-import { PieceSection }      from './components/PieceSection'
-import { UploadedPieceView } from './components/UploadedPieceView'
-import { ConnectionError }   from './components/ConnectionError'
+import { PieceView }  from './pages/PieceView'
+import { ScoreView }  from './pages/ScoreView'
+import { CorpusView } from './pages/CorpusView'
 
 const theme = getTheme('scientific')
+
+function ConnectionError({ error }: { error: string }) {
+  return (
+    <div style={{ padding: '24px 20px' }}>
+      <div style={{ fontWeight: 700, color: 'var(--vv-red)', marginBottom: 8, fontSize: 13 }}>
+        Cannot connect to VariVis API server
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--vv-text-2)', lineHeight: 1.7, marginBottom: 14 }}>
+        {error}
+      </div>
+      <div style={{
+        padding: '10px 14px', borderRadius: 8, background: 'var(--vv-elevated)',
+        fontSize: 11, fontFamily: 'monospace', lineHeight: 2,
+        color: 'var(--vv-text)', border: '1px solid var(--vv-border)',
+      }}>
+        cd /Users/jiaxuan/Desktop/Music\ Project/VariVis/backend<br />
+        source .venv/bin/activate<br />
+        python -m uvicorn server:app --reload --port 8000
+      </div>
+    </div>
+  )
+}
 
 export default function App() {
   const [lang, setLang] = useState<Lang>('en')
@@ -67,7 +87,7 @@ export default function App() {
         gridTemplateAreas:   '"sidebar score"',
       } : {}}>
 
-        <Sidebar
+        <PieceView
           pieceList={pieceList} loaded={loaded} nav={nav}
           upload={{ ...upload, handleUploadSuccess }}
           loadedFileNames={loadedFileNames} focusedPiece={focusedPiece}
@@ -77,19 +97,25 @@ export default function App() {
           {pieceList.listError && <ConnectionError error={pieceList.listError} />}
 
           {upload.uploadFocused && upload.uploadedPiece && (
-            <UploadedPieceView
-              result={upload.uploadedPiece} data={upload.uploadedData}
-              theme={theme} onRemove={upload.removeUploadedPiece}
+            <CorpusView
+              uploadFocused={upload.uploadFocused}
+              uploadedPiece={upload.uploadedPiece}
+              uploadedData={upload.uploadedData}
+              onRemoveUpload={upload.removeUploadedPiece}
+              theme={theme}
             />
           )}
 
           {!upload.uploadFocused && focusedPiece && (
-            <PieceSection
-              key={focusedPiece.meta.file_name + nav.activeTab}
+            <CorpusView
+              key={focusedPiece.meta.file_name}
+              uploadFocused={false}
+              uploadedPiece={null}
+              uploadedData={null}
+              onRemoveUpload={() => {}}
               loadedPiece={focusedPiece}
               colorIdx={loaded.loadedPieces.findIndex(p => p.meta.file_name === focusedPiece.meta.file_name)}
               theme={theme}
-              activeTab={nav.activeTab} setActiveTab={nav.setActiveTab}
               onRemove={() => removePiece(focusedPiece.meta.file_name)}
               onExtractionDone={() => onExtractionDone(focusedPiece.meta.file_name)}
             />
@@ -100,7 +126,7 @@ export default function App() {
           )}
         </main>
 
-        <ScorePanel
+        <ScoreView
           nav={nav} focusedPiece={focusedPiece} upload={upload}
           theme={theme} setLang={setLang}
           listLoading={pieceList.listLoading} listError={pieceList.listError}

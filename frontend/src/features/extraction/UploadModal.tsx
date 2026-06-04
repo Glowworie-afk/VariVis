@@ -2,13 +2,10 @@
  * UploadModal.tsx
  * ───────────────
  * Upload modal for temporary pieces.
- * User uploads MusicXML and/or audio, provides MM.SS boundaries and a name,
- * then clicks "Process". Backend returns temp feature data; modal closes and
- * parent receives the result.
  */
 
 import { useRef, useState } from 'react'
-import { API_BASE } from '../api/pieceApi'
+import { API_BASE } from '../../api/pieceApi'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -105,8 +102,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
   const [processing,  setProcessing]  = useState(false)
   const [error,       setError]       = useState('')
 
-  // Boundaries only required when audio is uploaded (needed for slicing).
-  // MXL-only uploads use rehearsal marks for segmentation, so boundaries are optional.
   const boundariesRequired = audioFile !== null
   const canProcess = (mxlFile !== null || audioFile !== null) && pieceName.trim() !== '' &&
     (!boundariesRequired || boundaries.trim() !== '')
@@ -140,7 +135,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
     }
   }
 
-  // Backdrop click
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget && !processing) onClose()
   }
@@ -165,7 +159,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
         flexDirection:'column',
         gap:          14,
       }}>
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 2 }}>
           <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#1e293b' }}>
             Upload Piece
@@ -180,7 +173,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
           >×</button>
         </div>
 
-        {/* Piece name */}
         <div>
           <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>
             PIECE NAME *
@@ -199,7 +191,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
           />
         </div>
 
-        {/* Files */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b' }}>FILES (at least one required)</label>
           <FileDropZone
@@ -225,7 +216,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
           />
         </div>
 
-        {/* Boundaries */}
         <div>
           <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>
             SEGMENT BOUNDARIES{boundariesRequired ? ' *' : ''}{' '}
@@ -251,7 +241,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
           </div>
         </div>
 
-        {/* Available views preview */}
         {(mxlFile !== null || audioFile !== null) && (
           <div style={{
             background: '#f8fafc', borderRadius: 7, padding: '8px 10px',
@@ -268,7 +257,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div style={{
             fontSize: 10, color: '#ef4444', background: '#fef2f2',
@@ -278,7 +266,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
           </div>
         )}
 
-        {/* Actions */}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 2 }}>
           <button
             onClick={onClose}

@@ -1,5 +1,5 @@
 /**
- * SymbolicHeatmapPage.tsx  —  33-feature Feature Comparison Matrix
+ * SymbolicHeatmap.tsx  —  33-feature Feature Comparison Matrix
  *
  * Layout (top → bottom, no overlap)
  *   1. Header + legend
@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_BASE } from '../api/pieceApi'
+import { API_BASE } from '../../api/pieceApi'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +45,6 @@ const CAT_LABEL: Record<Cat, string> = {
 
 /** One-line English description for every feature */
 const FEAT_DESC: Record<string, string> = {
-  // Pitch
   pitch_range:               'Semitone span from lowest to highest note; reflects keyboard range used.',
   mean_pitch:                'Average MIDI pitch number; indicates the registral centre of gravity.',
   pitch_std:                 'Spread of pitch values; high = wide leaps, low = confined to a narrow band.',
@@ -58,7 +57,6 @@ const FEAT_DESC: Record<string, string> = {
   tonal_clarity:             'Max Pearson correlation with 24 major/minor templates; high = clear key.',
   chromatic_density:         'Distinct pitch classes used ÷ 12; near 1 = chromatic saturation.',
   interval_class_variety:    'Number of distinct interval classes (IC 0–6) present.',
-  // Melodic
   mean_melodic_interval:     'Mean absolute interval between consecutive notes (semitones); high = leaping.',
   repeated_notes_ratio:      'Fraction of zero-semitone intervals; high = drumming or chanting style.',
   stepwise_ratio:            'Fraction of intervals ≤ 2 semitones; high = smooth stepwise melody.',
@@ -69,7 +67,6 @@ const FEAT_DESC: Record<string, string> = {
   arpeggiation_ratio:        'Fraction of third/fifth intervals; high = arpeggiated or broken-chord texture.',
   melodic_interval_variety:  'Number of distinct interval sizes used; high = diverse melodic vocabulary.',
   interval_entropy:          'Evenness of interval distribution; high = no fixed pattern, low = repetitive.',
-  // Rhythmic
   note_density:              'Notes per second; directly reflects the tempo and texture density.',
   mean_note_duration:        'Average note duration (s); short = fast runs, long = sustained singing style.',
   duration_variability:      'Coefficient of variation (std/mean) of durations; high = mixed note lengths.',
@@ -78,7 +75,6 @@ const FEAT_DESC: Record<string, string> = {
   rest_ratio:                'Fraction of segment duration with no note sounding; high = sparse, breathing.',
   rhythmic_value_variety:    'Number of distinct duration bins (0.04 s per bin); high = rhythmically layered.',
   duration_entropy:          'Evenness of duration distribution; low = fixed pattern, high = free mixture.',
-  // Texture
   max_simultaneous_notes:    'Peak simultaneous note count; reflects maximum chord thickness (voice count).',
   mean_simultaneous_notes:   'Time-weighted average polyphony; > 1 indicates sustained chordal texture.',
   chord_onset_ratio:         'Fraction of onsets with multiple notes within 50 ms; high = chord-dominated.',
@@ -86,17 +82,13 @@ const FEAT_DESC: Record<string, string> = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Convert any backend label to short display label ("T", "V1" … "V99"). */
 function dispLabel(label: string): string {
   if (label === 'Theme' || label === 'T') return 'T'
   if (label === 'C' || label.toLowerCase() === 'coda') return 'C'
-  // "Var.01", "Var.1", "Var. I" style (score-based path)
   const m1 = label.match(/^Var[.\s]+(\d+)$/i)
   if (m1) return `V${parseInt(m1[1], 10)}`
-  // "V1", "V12", "v3" style (already normalised by backend)
   const m2 = label.match(/^[Vv](\d+)$/)
   if (m2) return `V${parseInt(m2[1], 10)}`
-  // Fallback: return as-is (preserves unrecognised original labels)
   return label
 }
 
@@ -128,7 +120,6 @@ function DescPanel({ def }: { def: FeatureDef }) {
       borderRight: '1px solid #f0f0f0',
       display: 'flex', flexDirection: 'column', gap: 6,
     }}>
-      {/* Category badge */}
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 5,
         background: c + '18', border: `1px solid ${c}44`,
@@ -137,22 +128,15 @@ function DescPanel({ def }: { def: FeatureDef }) {
         <span style={{ fontSize: 11, fontWeight: 700, color: c }}>{def.cat}</span>
         <span style={{ fontSize: 10, color: c + 'cc' }}>{CAT_LABEL[def.cat]}</span>
       </div>
-
-      {/* Name */}
       <div>
         <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', lineHeight: 1.3 }}>
           {def.label_en}
         </div>
       </div>
-
-      {/* Divider */}
       <div style={{ height: 1, background: '#f1f5f9' }} />
-
-      {/* Description */}
       <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.6, flex: 1 }}>
         {FEAT_DESC[def.key] ?? '—'}
       </div>
-
     </div>
   )
 }
@@ -211,25 +195,17 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: C
   return (
     <svg width={W} height={H} style={{ display: 'block' }}>
       <rect x={pL} y={pT} width={cW} height={cH} fill="#f8fafc" rx={2} />
-
-      {/* SD band for continuous */}
       {ct === 'continuous' && std > 0 && (() => {
         const y1 = Math.max(pT, yS(mean + std))
         const y2 = Math.min(pT + cH, yS(mean - std))
         return <rect x={pL} y={y1} width={cW} height={Math.max(0, y2 - y1)} fill={cc + '18'} />
       })()}
-
-      {/* Zero axis for signed */}
       {ct === 'signed' && <line x1={pL} y1={z0} x2={pL+cW} y2={z0} stroke="#94a3b8" strokeWidth={1.5} />}
-
-      {/* Reference line */}
       {refLine && <>
         <line x1={pL} y1={refLine.y} x2={pL+cW} y2={refLine.y}
           stroke={refLine.color} strokeWidth={1.5} strokeDasharray="5,3" />
         <text x={pL+cW+3} y={refLine.y+4} fontSize={8} fill={refLine.color}>{refLine.txt}</text>
       </>}
-
-      {/* Bars (MIDI values) */}
       {rawValues.map((val, i) => {
         const hov  = i === hoveredIdx
         const fill = hov ? cc : cc + '55'
@@ -246,8 +222,6 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: C
           </g>
         )
       })}
-
-      {/* Y axis + ticks */}
       <line x1={pL} y1={pT} x2={pL} y2={pT+cH} stroke="#e2e8f0" />
       {yTicks.map((v, ti) => (
         <g key={ti}>
@@ -257,8 +231,6 @@ function FeatureDistChart({ def, rawValues, rowLabels, hoveredIdx, svgWidth }: C
           </text>
         </g>
       ))}
-
-      {/* X labels */}
       {rowLabels.map((lbl, i) => (
         <text key={i} x={xC(i)} y={pT + cH + 16} textAnchor="middle" fontSize={9}
           fill={i === hoveredIdx ? '#1e293b' : '#94a3b8'}
@@ -290,7 +262,7 @@ function Placeholder() {
 
 interface ProfilePanelProps {
   seg:      SegmentData
-  deltaRow: number[]   // delta z-score for all 33 features (original def order)
+  deltaRow: number[]
   rawRow:   number[]
   defs:     FeatureDef[]
   isTheme:  boolean
@@ -298,13 +270,12 @@ interface ProfilePanelProps {
   width:    number
 }
 
-function VariationProfilePanel({ seg, deltaRow, rawRow, defs, isTheme, onClose, width }: ProfilePanelProps) {
-  // Sort all features by |delta| descending
+function VariationProfilePanel({ seg, deltaRow, rawRow: _rawRow, defs, isTheme, onClose, width }: ProfilePanelProps) {
   const items = defs
-    .map((d, i) => ({ def: d, delta: deltaRow[i], raw: rawRow[i] }))
+    .map((d, i) => ({ def: d, delta: deltaRow[i] }))
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
 
-  const CAP   = 3          // clamp display at ±3 σ
+  const CAP   = 3
   const ROW_H = 14
   const LABEL_W  = 126
   const VAL_W    = 38
@@ -322,7 +293,6 @@ function VariationProfilePanel({ seg, deltaRow, rawRow, defs, isTheme, onClose, 
       boxShadow: '0 1px 6px rgba(0,0,0,.04)',
       marginBottom: 6, overflow: 'hidden',
     }}>
-      {/* Header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '5px 10px', borderBottom: '1px solid #f0f0f0', background: '#f8fafc',
@@ -336,7 +306,6 @@ function VariationProfilePanel({ seg, deltaRow, rawRow, defs, isTheme, onClose, 
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Category legend */}
           {(Object.keys(CAT_COLORS) as Cat[]).map(cat => (
             <span key={cat} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#64748b' }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: CAT_COLORS[cat], display: 'inline-block' }} />
@@ -349,17 +318,12 @@ function VariationProfilePanel({ seg, deltaRow, rawRow, defs, isTheme, onClose, 
           >×</button>
         </div>
       </div>
-
-      {/* Diverging bar chart */}
       <div style={{ overflowY: 'auto', maxHeight: 200 }}>
         <svg width={width - 16} height={SVG_H} style={{ display: 'block', margin: '2px 8px' }}>
-          {/* Axis labels */}
           <text x={LABEL_W + 2} y={10} fontSize={8} fill="#cbd5e1" textAnchor="start">−3σ</text>
           <text x={LABEL_W + BAR_AREA - 2} y={10} fontSize={8} fill="#cbd5e1" textAnchor="end">+3σ</text>
-          {/* Center line */}
           <line x1={LABEL_W + BAR_HALF} y1={0} x2={LABEL_W + BAR_HALF} y2={SVG_H}
             stroke="#e2e8f0" strokeWidth={1} />
-
           {items.map((item, i) => {
             const cc  = CAT_COLORS[item.def.cat]
             const bW  = Math.min(BAR_HALF, Math.abs(item.delta) * SCALE)
@@ -367,22 +331,17 @@ function VariationProfilePanel({ seg, deltaRow, rawRow, defs, isTheme, onClose, 
             const y   = i * ROW_H + 4
             const mid = y + ROW_H / 2
             const prominent = Math.abs(item.delta) > 1.5
-
             return (
               <g key={item.def.key}>
-                {/* Category dot */}
                 <circle cx={5} cy={mid} r={3} fill={cc} />
-                {/* Feature label */}
                 <text x={13} y={mid + 3.5} fontSize={9} fill={prominent ? '#1e293b' : '#64748b'}
                   fontWeight={prominent ? 600 : 400}>
                   {item.def.label_en}
                 </text>
-                {/* Bar */}
                 {bW > 0.5 && (
                   <rect x={bX} y={y + 2} width={bW} height={ROW_H - 5}
                     fill={cc + (prominent ? 'bb' : '66')} rx={1.5} />
                 )}
-                {/* Delta value */}
                 <text
                   x={LABEL_W + BAR_AREA + 4} y={mid + 3.5}
                   fontSize={9}
@@ -402,7 +361,7 @@ function VariationProfilePanel({ seg, deltaRow, rawRow, defs, isTheme, onClose, 
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
+export function SymbolicHeatmap({ fileName, musicName }: Props) {
   const [data,        setData]        = useState<SymbolicResponse | null>(null)
   const [loading,     setLoading]     = useState(false)
   const [error,       setError]       = useState<string | null>(null)
@@ -412,7 +371,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
   const [catFilter,   setCatFilter]   = useState<'All' | Cat>('All')
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
 
-  // Widths — measured via ref-callbacks so they fire even after a loading early-return
   const [chartPanelW, setChartPanelW] = useState(0)
   const _chartRo = useRef<ResizeObserver | null>(null)
   const chartPanelRef = useCallback((el: HTMLDivElement | null) => {
@@ -424,7 +382,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
     _chartRo.current = ro
   }, [])
 
-  // containerRef still needed for heatmap cell-width calculation
   const [containerW, setContainerW] = useState(900)
   const _contRo = useRef<ResizeObserver | null>(null)
   const containerRef = useCallback((el: HTMLDivElement | null) => {
@@ -445,7 +402,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
       .catch(e => { setError(e.message); setLoading(false) })
   }, [fileName])
 
-  // derived matrices
   const derived = useMemo(() => {
     if (!data) return null
     const { feature_defs: defs, segments } = data
@@ -462,7 +418,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
     const deltaMat: number[][] = zMat.map((row, ri) =>
       ri === themeIdx ? new Array(nC).fill(0) : row.map((z, ci) => z - thZ[ci])
     )
-    // category groups for header
     const catGroups: {cat: string; count: number}[] = []
     defs.forEach(d => {
       const last = catGroups[catGroups.length-1]
@@ -504,7 +459,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
     }
   }, [derived, selectedRow])
 
-  // ── Render ────────────────────────────────────────────────────────
   if (!fileName) return <div style={{padding:40,color:'#94a3b8'}}>Select a piece to view the heatmap.</div>
   if (loading)   return (
     <div style={{padding:40,display:'flex',alignItems:'center',gap:10,color:'#94a3b8'}}>
@@ -520,7 +474,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
   )
   if (!derived) return null
 
-  // Empty segments: MusicXML had no detectable rehearsal-mark structure
   if (derived.segments.length === 0) return (
     <div style={{padding:40,textAlign:'center'}}>
       <div style={{fontSize:13,color:'#94a3b8',lineHeight:1.7}}>
@@ -535,9 +488,7 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
 
   const { defs, segments, deltaMat, rawMat, themeIdx } = derived
 
-  // filter columns by selected category
   const visibleDefs = catFilter === 'All' ? defs : defs.filter(d => d.cat === catFilter)
-  // recompute catGroups for visible columns
   const visibleCatGroups: {cat: string; count: number}[] = []
   visibleDefs.forEach(d => {
     const last = visibleCatGroups[visibleCatGroups.length - 1]
@@ -552,7 +503,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
   return (
     <div ref={containerRef} style={{padding:'6px 10px 8px',fontFamily:'Inter,sans-serif',display:'flex',flexDirection:'column',height:'auto',boxSizing:'border-box',width:'100%'}}>
 
-      {/* ── 1. Header ──────────────────────────────────────────── */}
       <div style={{marginBottom:4}}>
         <div style={{fontSize:15,fontWeight:700,color:'#1e293b'}}>Feature Comparison Heatmap — {musicName ?? fileName}</div>
         <div style={{fontSize:11,color:'#94a3b8',marginTop:3}}>
@@ -560,9 +510,7 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
         </div>
       </div>
 
-      {/* ── 2. Category filter + colour scale ──────────────── */}
       <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4,flexWrap:'wrap'}}>
-        {/* All button */}
         <button
           onClick={() => { setCatFilter('All'); setSortCol(null) }}
           style={{
@@ -589,7 +537,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
         </div>
       </div>
 
-      {/* ── 3. Variation Profile Panel (appears when row label clicked) ── */}
       {profilePanel && (
         <VariationProfilePanel
           seg={profilePanel.seg}
@@ -602,7 +549,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
         />
       )}
 
-      {/* ── 4. Tooltip area ────────────────────────────────────── */}
       <div style={{
         height:130,minHeight:130,flexShrink:0,
         background:'#fff',borderRadius:8,
@@ -631,7 +577,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
         }
       </div>
 
-      {/* ── 4. Heatmap ─────────────────────────────────────────── */}
       <div style={{flex:'0 0 auto',overflow:'hidden'}}>
         <table style={{borderCollapse:'collapse',tableLayout:'fixed',width:'100%'}}>
           <colgroup>
@@ -639,7 +584,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
             {visibleDefs.map(d => <col key={d.key}/>)}
           </colgroup>
           <thead>
-            {/* Category row — always shown */}
             <tr>
               <th style={{height:14}}/>
               {visibleCatGroups.map(g => (
@@ -654,7 +598,6 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
                 </th>
               ))}
             </tr>
-            {/* Feature label row — only when a category is selected */}
             {showColTitles && (
               <tr>
                 <th style={{width:ROW_LBL,height:COL_H,position:'sticky',left:0,background:'#f8fafc',zIndex:2}}/>
@@ -758,3 +701,5 @@ export default function SymbolicHeatmapPage({ fileName, musicName }: Props) {
     </div>
   )
 }
+
+export default SymbolicHeatmap

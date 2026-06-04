@@ -6,9 +6,9 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import type { ThemeTokens } from '../theme'
-import type { PieceMeta, ExtractionEvent } from '../api/pieceApi'
-import { streamExtraction } from '../api/pieceApi'
+import type { ThemeTokens } from '../../theme'
+import type { PieceMeta, ExtractionEvent } from '../../api/pieceApi'
+import { streamExtraction } from '../../api/pieceApi'
 
 const IS_DEV = import.meta.env.DEV
 
@@ -80,7 +80,6 @@ export function ExtractionPanel({ piece, theme, onDone }: Props) {
       boxShadow: theme.cardShadow,
       fontFamily: theme.fontFamily,
     }}>
-      {/* Piece info */}
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: theme.labelColor, marginBottom: 4 }}>
           {piece.music_name || piece.file_name}
@@ -90,7 +89,6 @@ export function ExtractionPanel({ piece, theme, onDone }: Props) {
         </div>
       </div>
 
-      {/* Status badge */}
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
         padding: '4px 10px', borderRadius: 20,
@@ -102,7 +100,6 @@ export function ExtractionPanel({ piece, theme, onDone }: Props) {
         </span>
       </div>
 
-      {/* Extract button */}
       {(phase === 'idle' || phase === 'error') && (
         <div>
           <button
@@ -134,7 +131,6 @@ export function ExtractionPanel({ piece, theme, onDone }: Props) {
         </div>
       )}
 
-      {/* Progress bar — dev only */}
       {running && (
         <div style={{
           height: 3, borderRadius: 2,
@@ -151,7 +147,6 @@ export function ExtractionPanel({ piece, theme, onDone }: Props) {
         </div>
       )}
 
-      {/* Log output — dev only */}
       {logs.length > 0 && (
         <div style={{
           marginTop: 14, maxHeight: 240, overflowY: 'auto',

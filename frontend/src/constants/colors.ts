@@ -66,3 +66,18 @@ export function modeColor(modeScore: number): string {
 export function cofHue(cofIndex: number): number {
   return cofIndex * 30
 }
+
+// Distinct colours per segment index (used for pitch contour labels)
+const LABEL_COLORS = [
+  '#4CC9F0', '#F72585', '#7209B7', '#3A0CA3',
+  '#4361EE', '#06D6A0', '#F77F00', '#2EC4B6',
+  '#E9C46A', '#E76F51', '#264653', '#A8DADC',
+  '#457B9D', '#1D3557',
+]
+
+/**
+ * Segment index → distinct label color for pitch contour rendering
+ */
+export function labelColor(index: number): string {
+  return LABEL_COLORS[index % LABEL_COLORS.length]
+}

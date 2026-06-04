@@ -6,10 +6,10 @@
  */
 
 import { useEffect } from 'react'
-import type { Segment } from '../types/features'
-import type { ThemeTokens } from '../theme'
-import { useLang } from '../i18n/LangContext'
-import type { ContourRange } from '../utils/pitchContour'
+import type { Segment } from '../../../../types/features'
+import type { ThemeTokens } from '../../../../theme'
+import { useLang } from '../../../../i18n/LangContext'
+import type { ContourRange } from '../../../../utils/pitchContour'
 import {
   getContourData,
   normaliseContour,
@@ -18,9 +18,9 @@ import {
   yAxisTicks,
   dtwWarpOntoA,
   dtwSimilarity,
-} from '../utils/pitchContour'
-import { labelColor } from './PitchContour'
-import { RingCard } from './ChromaRingPage'
+} from '../../../../utils/pitchContour'
+import { labelColor } from '../../../../constants/colors'
+import { RingCard } from './RingCard'
 
 interface Props {
   segments: [Segment] | [Segment, Segment]
@@ -31,8 +31,8 @@ interface Props {
 
 // Layout constants
 const TOTAL_W  = Math.min(920, (typeof window !== 'undefined' ? window.innerWidth : 960) - 48)
-const RING_W   = 210   // chroma panel width
-const W        = TOTAL_W - RING_W - 24  // contour SVG width
+const RING_W   = 210
+const W        = TOTAL_W - RING_W - 24
 const H        = 300
 const PAD_X    = 52
 const PAD_Y    = 28
@@ -50,13 +50,11 @@ export function ContourModal({ segments, range, theme, onClose }: Props) {
   const isDark    = theme.pageBg.startsWith('#0') || theme.pageBg.startsWith('#1') || theme.pageBg.includes('1a')
   const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'
 
-  // Pre-compute DTW warp + similarity at component level so footer can access it
   const cdA       = getContourData(segments[0])
   const cdB       = isTwoMode ? getContourData(segments[1]) : null
   const warpedB   = cdB ? dtwWarpOntoA(cdA.values, cdB.values) : null
   const sim       = warpedB ? dtwSimilarity(cdA.values, warpedB) : null
 
-  // Use the mode of the first segment to drive axis labels
   const firstContour = cdA
   const ticks = yAxisTicks(range, firstContour.mode, firstContour.tonicName)
 
@@ -67,7 +65,6 @@ export function ContourModal({ segments, range, theme, onClose }: Props) {
     ? normaliseContour([0], range)[0]
     : null
 
-  // x-ticks at 0, 25, 50, 75, 100%
   const xTicks = [0, 0.25, 0.5, 0.75, 1]
 
   return (
@@ -212,7 +209,7 @@ export function ContourModal({ segments, range, theme, onClose }: Props) {
             fill="none" stroke={gridColor} strokeWidth={1}
           />
 
-          {/* Contours — in two-mode, B is DTW-warped onto A's time axis */}
+          {/* Contours */}
           {(() => {
             return segments.map((seg, i) => {
               const rawVals = i === 0 ? cdA.values : warpedB!
@@ -223,7 +220,6 @@ export function ContourModal({ segments, range, theme, onClose }: Props) {
               const alpha  = isTwoMode ? (i === 0 ? '18' : '10') : '20'
               const sw     = isTwoMode ? 2.5 : 3
 
-              // Label at start of line
               const startY = PAD_Y + norm[0] * innerH
               const labelSuffix = isTwoMode
                 ? (i === 0 ? ` (A)` : ` (B · DTW)`)
@@ -287,7 +283,6 @@ export function ContourModal({ segments, range, theme, onClose }: Props) {
                         : '#E76F51'
             return (
               <>
-                {/* Similarity badge */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   background: `${color}18`, border: `1px solid ${color}55`,
@@ -300,7 +295,6 @@ export function ContourModal({ segments, range, theme, onClose }: Props) {
                     {sim.similarity}%
                   </span>
                 </div>
-                {/* Mean diff */}
                 <span style={{
                   fontSize: 10, color: theme.labelSecondaryColor,
                   fontFamily: theme.fontFamily, opacity: 0.75,

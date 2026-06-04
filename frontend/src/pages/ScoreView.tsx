@@ -4,10 +4,10 @@ import type { AppNavState } from '../hooks/useAppNav'
 import type { UploadState } from '../hooks/useUpload'
 import { useLang } from '../i18n/LangContext'
 import { API_BASE } from '../api/pieceApi'
-import { ScorePage }    from './ScorePage'
-import { MusicVisPage } from './MusicVisPage'
+import { ScorePage }    from '../features/score/ScorePage'
+import { HarmonicPanel } from '../features/drill-down/HarmonicPanel'
 
-interface ScorePanelProps {
+interface ScoreViewProps {
   nav:          AppNavState
   focusedPiece: LoadedPiece | undefined
   upload:       UploadState
@@ -17,7 +17,7 @@ interface ScorePanelProps {
   listError:    string
 }
 
-export function ScorePanel({ nav, focusedPiece, upload, theme, setLang, listLoading, listError }: ScorePanelProps) {
+export function ScoreView({ nav, focusedPiece, upload, theme, setLang, listLoading, listError }: ScoreViewProps) {
   const { scoreMode, setScoreMode, focusedXmlFile } = nav
   const { uploadedPiece, uploadFocused } = upload
   const lang = useLang()
@@ -85,7 +85,7 @@ export function ScorePanel({ nav, focusedPiece, upload, theme, setLang, listLoad
               )
             ) : (
               uploadedPiece.mxl_stem
-                ? <MusicVisPage theme={theme} xmlFile={uploadedPiece.mxl_stem} />
+                ? <HarmonicPanel theme={theme} xmlFile={uploadedPiece.mxl_stem} />
                 : <EmptyState icon="🎵" message="Score View requires a MusicXML file." />
             )
           ) : scoreMode === 'pdf' ? (
@@ -98,7 +98,7 @@ export function ScorePanel({ nav, focusedPiece, upload, theme, setLang, listLoad
               <div className="vv-score-panel-empty"><span>Score</span></div>
             )
           ) : (
-            <MusicVisPage theme={theme} xmlFile={focusedXmlFile} />
+            <HarmonicPanel theme={theme} xmlFile={focusedXmlFile} />
           )}
         </div>
       </div>

@@ -1,6 +1,6 @@
 // useAppNav — Owns all navigation and view-mode state for the three-panel layout:
 //   focusedFile      which piece is active in the main panel
-//   activeTab        which analysis tab is shown (corpus_view | overview | …)
+//   activeTab        which analysis tab is shown (corpus_view)
 //   scoreMode        right panel mode: PDF score vs MusicXML harmonic view
 //   expandedComposers/Pieces  sidebar tree open/close state
 //   focusedXmlFile   derived: resolves the MusicXML filename for the focused context
@@ -9,7 +9,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import type { PieceTab } from '../types/app'
-import type { UploadResult } from '../components/UploadModal'
+import type { UploadResult } from '../features/extraction/UploadModal'
 
 export interface AppNavState {
   focusedFile:          string | null
