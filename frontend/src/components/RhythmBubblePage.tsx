@@ -12,7 +12,7 @@
 import { useState } from 'react'
 import type { PieceData } from '../types/features'
 import type { getTheme } from '../theme'
-import type { Lang } from '../App'
+import type { Lang } from '../types/app'
 
 interface Props {
   data:        PieceData

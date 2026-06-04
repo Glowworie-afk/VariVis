@@ -5,7 +5,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../App'
+import type { Lang } from '../types/app'
 import { API_BASE } from '../api/pieceApi'
 
 interface Props {

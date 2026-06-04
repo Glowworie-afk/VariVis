@@ -14,7 +14,7 @@
 import { useMemo, useState, useCallback } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../App'
+import type { Lang } from '../types/app'
 import {
   getContourData,
   globalContourRange,

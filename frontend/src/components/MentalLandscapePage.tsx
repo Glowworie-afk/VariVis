@@ -20,7 +20,7 @@
 import { useState } from 'react'
 import type { PieceData, Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../App'
+import type { Lang } from '../types/app'
 
 interface Props {
   data:        PieceData

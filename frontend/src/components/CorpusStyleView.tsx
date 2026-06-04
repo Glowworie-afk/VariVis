@@ -21,7 +21,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { PieceData, Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../App'
+import type { Lang } from '../types/app'
 
 import { PitchContourPage } from './PitchContourPage'
 import { RhythmBubblePage } from './RhythmBubblePage'

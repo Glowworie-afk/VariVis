@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../App'
+import type { Lang } from '../types/app'
 import { API_BASE } from '../api/pieceApi'
 
 // ── Types ─────────────────────────────────────────────────────────────

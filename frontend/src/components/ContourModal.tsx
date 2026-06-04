@@ -8,7 +8,7 @@
 import { useEffect } from 'react'
 import type { Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../App'
+import type { Lang } from '../types/app'
 import type { ContourRange } from '../utils/pitchContour'
 import {
   getContourData,
