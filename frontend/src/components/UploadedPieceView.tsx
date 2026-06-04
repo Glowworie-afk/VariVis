@@ -1,20 +1,18 @@
 import type { ThemeTokens } from '../theme'
 import type { PieceData } from '../types/features'
-import type { Lang } from '../types/app'
 import type { UploadResult } from './UploadModal'
+import { useT } from '../i18n/LangContext'
 import { CorpusStyleView } from './CorpusStyleView'
 
 interface UploadedPieceViewProps {
   result:   UploadResult
   data:     PieceData | null
   theme:    ThemeTokens
-  lang:     Lang
   onRemove: () => void
 }
 
-export function UploadedPieceView({
-  result, data, theme, lang, onRemove,
-}: UploadedPieceViewProps) {
+export function UploadedPieceView({ result, data, theme, onRemove }: UploadedPieceViewProps) {
+  const t = useT()
   const hasMxl   = result.mxl_stem !== null
   const hasAudio = data !== null && (data.segments[0]?.features?.rms_mean !== undefined)
 
@@ -32,7 +30,7 @@ export function UploadedPieceView({
             {result.music_name}
           </div>
           <div style={{ fontSize: 10, color: 'var(--vv-text-3)', marginTop: 1, display: 'flex', gap: 5, alignItems: 'center' }}>
-            <span>Temp upload</span>
+            <span>{t('sidebar.temp-upload')}</span>
             <span>·</span>
             <span>{result.n_segments} segs</span>
             {hasMxl   && <span style={{ background: '#6366f1', color: '#fff', borderRadius: 3, padding: '0 4px', fontSize: 9, fontWeight: 700 }}>MXL</span>}
@@ -60,7 +58,7 @@ export function UploadedPieceView({
 
         {data !== null && hasAudio && (
           <CorpusStyleView
-            data={data} theme={theme} isDark={false} lang={lang}
+            data={data} theme={theme} isDark={false}
             fileName={result.temp_name} hasMidi={false}
             onSeekMain={() => {}}
             playMain={() => {}}

@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { getTheme } from './theme'
 import type { Lang } from './types/app'
 import type { UploadResult } from './components/UploadModal'
 import { COMPOSER_GROUPS } from './constants/pieces'
+import { LangProvider } from './i18n/LangContext'
 
 import { useMusicXmlFiles } from './hooks/useMusicXmlFiles'
 import { useUpload }        from './hooks/useUpload'
@@ -16,9 +18,9 @@ import { UploadedPieceView } from './components/UploadedPieceView'
 import { ConnectionError }   from './components/ConnectionError'
 
 const theme = getTheme('scientific')
-const lang: Lang = 'en'
 
 export default function App() {
+  const [lang, setLang] = useState<Lang>('en')
   const xmlFiles  = useMusicXmlFiles()
   const upload    = useUpload(xmlFiles.refresh)
   const nav       = useAppNav(upload.uploadFocused, upload.uploadedPiece, xmlFiles.files)
@@ -59,49 +61,51 @@ export default function App() {
   // ── Layout ────────────────────────────────────────────────────────
 
   return (
-    <div className="vv-app" style={nav.scoreMode === 'musicxml' ? {
-      gridTemplateColumns: `var(--vv-sidebar-w) 1fr`,
-      gridTemplateAreas:   '"sidebar score"',
-    } : {}}>
+    <LangProvider lang={lang}>
+      <div className="vv-app" style={nav.scoreMode === 'musicxml' ? {
+        gridTemplateColumns: `var(--vv-sidebar-w) 1fr`,
+        gridTemplateAreas:   '"sidebar score"',
+      } : {}}>
 
-      <Sidebar
-        pieceList={pieceList} loaded={loaded} nav={nav}
-        upload={{ ...upload, handleUploadSuccess }}
-        loadedFileNames={loadedFileNames} focusedPiece={focusedPiece} lang={lang}
-      />
+        <Sidebar
+          pieceList={pieceList} loaded={loaded} nav={nav}
+          upload={{ ...upload, handleUploadSuccess }}
+          loadedFileNames={loadedFileNames} focusedPiece={focusedPiece}
+        />
 
-      <main className="vv-main" style={nav.scoreMode === 'musicxml' ? { display: 'none' } : {}}>
-        {pieceList.listError && <ConnectionError error={pieceList.listError} />}
+        <main className="vv-main" style={nav.scoreMode === 'musicxml' ? { display: 'none' } : {}}>
+          {pieceList.listError && <ConnectionError error={pieceList.listError} />}
 
-        {upload.uploadFocused && upload.uploadedPiece && (
-          <UploadedPieceView
-            result={upload.uploadedPiece} data={upload.uploadedData}
-            theme={theme} lang={lang} onRemove={upload.removeUploadedPiece}
-          />
-        )}
+          {upload.uploadFocused && upload.uploadedPiece && (
+            <UploadedPieceView
+              result={upload.uploadedPiece} data={upload.uploadedData}
+              theme={theme} onRemove={upload.removeUploadedPiece}
+            />
+          )}
 
-        {!upload.uploadFocused && focusedPiece && (
-          <PieceSection
-            key={focusedPiece.meta.file_name + nav.activeTab}
-            loadedPiece={focusedPiece}
-            colorIdx={loaded.loadedPieces.findIndex(p => p.meta.file_name === focusedPiece.meta.file_name)}
-            theme={theme} lang={lang}
-            activeTab={nav.activeTab} setActiveTab={nav.setActiveTab}
-            onRemove={() => removePiece(focusedPiece.meta.file_name)}
-            onExtractionDone={() => onExtractionDone(focusedPiece.meta.file_name)}
-          />
-        )}
+          {!upload.uploadFocused && focusedPiece && (
+            <PieceSection
+              key={focusedPiece.meta.file_name + nav.activeTab}
+              loadedPiece={focusedPiece}
+              colorIdx={loaded.loadedPieces.findIndex(p => p.meta.file_name === focusedPiece.meta.file_name)}
+              theme={theme}
+              activeTab={nav.activeTab} setActiveTab={nav.setActiveTab}
+              onRemove={() => removePiece(focusedPiece.meta.file_name)}
+              onExtractionDone={() => onExtractionDone(focusedPiece.meta.file_name)}
+            />
+          )}
 
-        {pieceList.listLoading && (
-          <div className="vv-loading">Connecting to server…</div>
-        )}
-      </main>
+          {pieceList.listLoading && (
+            <div className="vv-loading">Connecting to server…</div>
+          )}
+        </main>
 
-      <ScorePanel
-        nav={nav} focusedPiece={focusedPiece} upload={upload}
-        theme={theme} lang={lang}
-        listLoading={pieceList.listLoading} listError={pieceList.listError}
-      />
-    </div>
+        <ScorePanel
+          nav={nav} focusedPiece={focusedPiece} upload={upload}
+          theme={theme} setLang={setLang}
+          listLoading={pieceList.listLoading} listError={pieceList.listError}
+        />
+      </div>
+    </LangProvider>
   )
 }

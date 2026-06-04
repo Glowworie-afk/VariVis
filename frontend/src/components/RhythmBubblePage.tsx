@@ -12,13 +12,12 @@
 import { useState } from 'react'
 import type { PieceData } from '../types/features'
 import type { getTheme } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 
 interface Props {
   data:        PieceData
   theme:       ReturnType<typeof getTheme>
   isDark:      boolean
-  lang:        Lang
   selectedSeg?: number | null
 }
 
@@ -91,7 +90,8 @@ interface TooltipInfo {
 
 // ── Component ────────────────────────────────────────────────────────
 
-export function RhythmBubblePage({ data, theme, isDark, lang, selectedSeg }: Props) {
+export function RhythmBubblePage({ data, theme, isDark, selectedSeg }: Props) {
+  const lang = useLang()
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null)
 
   const segments    = data.segments

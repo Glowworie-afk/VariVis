@@ -14,7 +14,7 @@
 import { useState, useMemo } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 import {
   getContourData,
   normaliseContour,
@@ -312,14 +312,14 @@ interface Props {
   data:         PieceData
   theme:        ThemeTokens
   isDark:       boolean
-  lang:         Lang
   selectedSeg?: number | null
 }
 
 export function PitchContourPage({
-  data, theme, isDark, lang,
+  data, theme, isDark,
   selectedSeg,
 }: Props) {
+  const lang = useLang()
   const { segments } = data
 
   const [primaryIdx,   setPrimaryIdx]   = useState<number | null>(null)
@@ -413,7 +413,6 @@ export function PitchContourPage({
           segments={modalSegments}
           range={range}
           theme={theme}
-          lang={lang}
           onClose={() => {
             setModalOpen(false)
             setPrimaryIdx(null)

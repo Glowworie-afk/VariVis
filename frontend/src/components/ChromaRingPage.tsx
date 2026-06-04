@@ -16,7 +16,7 @@ import { useMemo } from 'react'
 import { arc } from 'd3'
 import type { PieceData, Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 import { chromaOuterRadius } from '../utils/normalize'
 import { COF_NAMES } from '../constants/colors'
 
@@ -328,7 +328,6 @@ interface Props {
   data:        PieceData
   theme:       ThemeTokens
   isDark:      boolean
-  lang:        Lang
   selectedSeg?: number | null
 }
 

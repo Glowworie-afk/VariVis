@@ -5,14 +5,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 import { API_BASE } from '../api/pieceApi'
 
 interface Props {
   data:     PieceData
   theme:    ThemeTokens
   isDark:   boolean
-  lang:     Lang
   fileName: string
   composer?: string   // passed from PieceMeta for richer not-found hints
 }
@@ -21,7 +20,8 @@ type Status = 'idle' | 'loading' | 'ready' | 'not_found' | 'error'
 
 const API = API_BASE.replace(/\/api$/, '')
 
-export function ScorePage({ data, theme, isDark, lang, fileName, composer }: Props) {
+export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
+  const lang = useLang()
   const [status,    setStatus]    = useState<Status>('idle')
   const [pdfUrl,    setPdfUrl]    = useState('')
   const [matchedFile, setMatchedFile] = useState('')

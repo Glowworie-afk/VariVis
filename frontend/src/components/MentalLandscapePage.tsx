@@ -20,13 +20,13 @@
 import { useState } from 'react'
 import type { PieceData, Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
+import { useLang } from '../i18n/LangContext'
 import type { Lang } from '../types/app'
 
 interface Props {
   data:        PieceData
   theme:       ThemeTokens
   isDark:      boolean
-  lang:        Lang
   selectedSeg?: number | null
   onSegSelect?: (i: number) => void
 }
@@ -211,7 +211,8 @@ function radarPolyPts(
 
 // ── Component ─────────────────────────────────────────────────────────
 
-export function MentalLandscapePage({ data, theme, isDark, lang, selectedSeg, onSegSelect }: Props) {
+export function MentalLandscapePage({ data, theme, isDark, selectedSeg, onSegSelect }: Props) {
+  const lang = useLang()
   const [tooltip,        setTooltip      ] = useState<{ seg: Segment; svgX: number; svgY: number } | null>(null)
   const [showSemantic,   setShowSemantic ] = useState(true)
   const [showRussell,    setShowRussell  ] = useState(true)

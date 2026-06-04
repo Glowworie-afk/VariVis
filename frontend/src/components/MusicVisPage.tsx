@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 import { API_BASE } from '../api/pieceApi'
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -52,10 +52,10 @@ interface StatProps {
   activeSection: Section | null
   chordData:     ChordMeasure[]
   theme:         ThemeTokens
-  lang:          Lang
 }
 
-function HarmonicStatsChart({ sections, activeSection, chordData, theme, lang }: StatProps) {
+function HarmonicStatsChart({ sections, activeSection, chordData, theme }: StatProps) {
+  const lang = useLang()
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en
 
   const [sortBy,    setSortBy]    = useState<'default' | 'T' | 'S' | 'D' | 'O'>('default')
@@ -204,9 +204,10 @@ function HarmonicStatsChart({ sections, activeSection, chordData, theme, lang }:
 
 // ── Main component ────────────────────────────────────────────────────
 
-interface Props { theme: ThemeTokens; lang: Lang; xmlFile: string }
+interface Props { theme: ThemeTokens; xmlFile: string }
 
-export function MusicVisPage({ theme, lang, xmlFile }: Props) {
+export function MusicVisPage({ theme, xmlFile }: Props) {
+  const lang = useLang()
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en
 
   const [sections,      setSections]      = useState<Section[]>([])
@@ -514,7 +515,6 @@ export function MusicVisPage({ theme, lang, xmlFile }: Props) {
           activeSection={activeSection}
           chordData={chordData}
           theme={theme}
-          lang={lang}
         />
       )}
 

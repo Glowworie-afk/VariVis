@@ -14,7 +14,7 @@
 import { useMemo, useState, useCallback } from 'react'
 import type { PieceData } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 import {
   getContourData,
   globalContourRange,
@@ -214,14 +214,14 @@ interface RingProps {
   isDark:       boolean
   size:         number
   showLabels?:  boolean
-  lang?:        Lang
   chordRec?:    ChordRecData      // chord recognition data (optional)
   chordMode?:   boolean           // if true, overlay chord transition arcs
 }
 
 function RingChart({ normContour,pcaData,activeIdx,segments,chroma,bubbles,
-  avgDensity,avgRms,pieceAvgRms,segColor,sectorColors,isDark,size,showLabels,lang,
+  avgDensity,avgRms,pieceAvgRms,segColor,sectorColors,isDark,size,showLabels,
   chordRec,chordMode }: RingProps) {
+  const lang = useLang()
   const g   = geo(size)
   const gc  = isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.07)'
   const sep = isDark?'rgba(255,255,255,0.13)':'rgba(0,0,0,0.10)'
@@ -517,14 +517,14 @@ interface CardProps {
   topN:         number
   isDark:       boolean
   theme:        ThemeTokens
-  lang:         Lang
   onClick:      () => void
 }
 
 const CARD_W    = 164
 const RING_SIZE = 140   // fits inside card with 12px total horizontal padding
 
-function OverviewCard({ segment,normContour,pcaData,allSegments,globalMaxRms,pieceAvgRms,topN,isDark,theme,lang,onClick }: CardProps) {
+function OverviewCard({ segment,normContour,pcaData,allSegments,globalMaxRms,pieceAvgRms,topN,isDark,theme,onClick }: CardProps) {
+  const lang = useLang()
   const accent    = labelColor(segment.index)
   const chroma    = segment.features.chroma_cof ?? []
   const sColors   = chordColors(chroma, topN, isDark)
@@ -591,7 +591,6 @@ function OverviewCard({ segment,normContour,pcaData,allSegments,globalMaxRms,pie
         sectorColors={sColors}
         isDark={isDark}
         size={RING_SIZE}
-        lang={lang}
         chordRec={chordRec}
         chordMode={chordMode}
       />
@@ -638,11 +637,11 @@ interface ModalProps {
   topN:         number
   theme:        ThemeTokens
   isDark:       boolean
-  lang:         Lang
   onClose:      () => void
 }
 
-function PanelModal({ segIdx,segments,contours,globalMaxRms,pieceAvgRms,pcaData,topN,theme,isDark,lang,onClose }: ModalProps) {
+function PanelModal({ segIdx,segments,contours,globalMaxRms,pieceAvgRms,pcaData,topN,theme,isDark,onClose }: ModalProps) {
+  const lang = useLang()
   const seg      = segments[segIdx]
   const segColor = labelColor(seg.index)
   const chroma   = seg.features.chroma_cof ?? []
@@ -709,7 +708,7 @@ function PanelModal({ segIdx,segments,contours,globalMaxRms,pieceAvgRms,pcaData,
             avgRms={avgRms}
             pieceAvgRms={pieceAvgRms}
             segColor={segColor} sectorColors={sColors}
-            isDark={isDark} size={320} showLabels lang={lang}
+            isDark={isDark} size={320} showLabels
             chordRec={chordRec} chordMode={chordMode}
           />
 
@@ -786,13 +785,13 @@ interface Props {
   data:   PieceData
   theme:  ThemeTokens
   isDark: boolean
-  lang:   Lang
 }
 
 /** How many top pitch classes to colour as "chord tones" */
 const CHORD_TOP_N = 3
 
-export function OverviewPage({ data, theme, isDark, lang }: Props) {
+export function OverviewPage({ data, theme, isDark }: Props) {
+  const lang = useLang()
   const { segments } = data
 
   const [openIdx, setOpenIdx] = useState<number | null>(null)
@@ -858,7 +857,6 @@ export function OverviewPage({ data, theme, isDark, lang }: Props) {
             topN={CHORD_TOP_N}
             isDark={isDark}
             theme={theme}
-            lang={lang}
             onClick={() => open(idx)}
           />
         ))}
@@ -868,7 +866,7 @@ export function OverviewPage({ data, theme, isDark, lang }: Props) {
         <PanelModal
           segIdx={openIdx} segments={segments} contours={contours}
           globalMaxRms={globalMaxRms} pieceAvgRms={pieceAvgRms} pcaData={pcaData} topN={CHORD_TOP_N}
-          theme={theme} isDark={isDark} lang={lang}
+          theme={theme} isDark={isDark}
           onClose={close}
         />
       )}

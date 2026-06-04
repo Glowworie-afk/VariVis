@@ -1,8 +1,9 @@
-import type { Lang, LoadedPiece } from '../types/app'
+import type { LoadedPiece } from '../types/app'
 import type { PieceListState } from '../hooks/usePieceList'
 import type { LoadedPiecesState } from '../hooks/useLoadedPieces'
 import type { AppNavState } from '../hooks/useAppNav'
 import type { UploadState } from '../hooks/useUpload'
+import { useLang, useT } from '../i18n/LangContext'
 import { perfVersion, pieceTitle, catalogNum, groupPieces } from '../utils/pieceHelpers'
 import { COMPOSER_GROUPS } from '../constants/pieces'
 import SymbolicHeatmapPage from './SymbolicHeatmapPage'
@@ -15,10 +16,12 @@ interface SidebarProps {
   upload:          UploadState
   loadedFileNames: Set<string>
   focusedPiece:    LoadedPiece | undefined
-  lang:            Lang
 }
 
-export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focusedPiece, lang }: SidebarProps) {
+export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focusedPiece }: SidebarProps) {
+  const t    = useT()
+  const lang = useLang()
+
   const { pieces, listLoading, listError } = pieceList
   const { loadPiece } = loaded
   const { focusedFile, setFocusedFile, expandedComposers, setExpandedComposers, expandedPieces, setExpandedPieces } = nav
@@ -34,7 +37,7 @@ export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focus
       }}>
         {listLoading && (
           <div style={{ fontSize: 11, color: 'var(--vv-text-3)', padding: '6px 4px' }}>
-            {lang === 'zh' ? '连接中…' : 'Connecting…'}
+            {t('sidebar.connecting')}
           </div>
         )}
         {listError && (
@@ -52,7 +55,7 @@ export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focus
           }}
         >
           <span style={{ fontSize: 13 }}>⬆</span>
-          {lang === 'zh' ? '上传乐曲' : 'Upload piece'}
+          {t('sidebar.upload')}
         </button>
 
         {/* Uploaded piece card */}
@@ -75,7 +78,7 @@ export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focus
                 {uploadedPiece.music_name}
               </div>
               <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 1 }}>
-                {lang === 'zh' ? '临时上传' : 'Temp upload'} · {uploadedPiece.n_segments} segs
+                {t('sidebar.temp-upload')} · {uploadedPiece.n_segments} segs
               </div>
             </div>
             {uploadedData === null && <span style={{ fontSize: 9, color: '#94a3b8' }}>…</span>}
@@ -96,9 +99,11 @@ export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focus
             <div key={key}>
               <div
                 className="vv-tree-composer"
-                onClick={() => setExpandedComposers(prev => {
-                  const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next
-                })}
+                onClick={() => {
+                  const next = new Set(expandedComposers)
+                  next.has(key) ? next.delete(key) : next.add(key)
+                  setExpandedComposers(next)
+                }}
               >
                 <span className="vv-tree-caret">{composerOpen ? '▾' : '▸'}</span>
                 <span style={{ flex: 1 }}>{lang === 'zh' ? zh : label}</span>
@@ -111,9 +116,11 @@ export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focus
                   <div key={id}>
                     <div
                       className={`vv-tree-piece${anyLoaded ? ' has-loaded' : ''}`}
-                      onClick={() => setExpandedPieces(prev => {
-                        const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
-                      })}
+                      onClick={() => {
+                        const next = new Set(expandedPieces)
+                        next.has(id) ? next.delete(id) : next.add(id)
+                        setExpandedPieces(next)
+                      }}
                     >
                       <span className="vv-tree-caret" style={{ fontSize: 9 }}>{pieceOpen ? '▾' : '▸'}</span>
                       <span className="vv-tree-piece-title">{pieceTitle(musicName)}</span>
@@ -180,7 +187,6 @@ export function Sidebar({ pieceList, loaded, nav, upload, loadedFileNames, focus
         )}
       </div>
 
-      {/* Upload modal (portaled to sidebar for simplicity) */}
       {showUploadModal && (
         <UploadModal onClose={() => setShowUploadModal(false)} onSuccess={handleUploadSuccess} />
       )}

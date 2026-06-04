@@ -21,7 +21,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { PieceData, Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 
 import { PitchContourPage } from './PitchContourPage'
 import { RhythmBubblePage } from './RhythmBubblePage'
@@ -241,7 +241,6 @@ interface Props {
   data:           PieceData
   theme:          ThemeTokens
   isDark:         boolean
-  lang:           Lang
   fileName:       string
   hasMidi?:       boolean
   onSeekMain?:    (sec: number) => void
@@ -252,10 +251,11 @@ interface Props {
 }
 
 export function CorpusStyleView({
-  data, theme, isDark, lang, fileName, hasMidi: _hasMidi,
+  data, theme, isDark, fileName, hasMidi: _hasMidi,
   onSeekMain: _onSeekMain, playMain: _playMain, pauseMain: _pauseMain,
   mainTime = 0, isMainPlaying = false,
 }: Props) {
+  const lang = useLang()
   const [selectedSeg, setSelectedSeg] = useState<number>(0)
   const [activeTab,   setActiveTab]   = useState<DetailTab>('pitch')
 
@@ -485,7 +485,7 @@ export function CorpusStyleView({
         {/* PITCH TAB — all segments, selected highlighted */}
         {activeTab === 'pitch' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>
-            <PitchContourPage key={selectedSeg} data={data} theme={theme} isDark={isDark} lang={lang}
+            <PitchContourPage key={selectedSeg} data={data} theme={theme} isDark={isDark}
               selectedSeg={selectedSeg} />
           </div>
         )}
@@ -493,7 +493,7 @@ export function CorpusStyleView({
         {/* RHYTHM TAB — all segments, selected highlighted */}
         {activeTab === 'rhythm' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>
-            <RhythmBubblePage key={selectedSeg} data={data} theme={theme} isDark={isDark} lang={lang}
+            <RhythmBubblePage key={selectedSeg} data={data} theme={theme} isDark={isDark}
               selectedSeg={selectedSeg} />
           </div>
         )}
@@ -502,7 +502,7 @@ export function CorpusStyleView({
         {activeTab === 'mda' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <MdaAnalysisPage
-              data={data} theme={theme} isDark={isDark} lang={lang}
+              data={data} theme={theme} isDark={isDark}
             />
           </div>
         )}

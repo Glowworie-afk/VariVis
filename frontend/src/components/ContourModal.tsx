@@ -8,7 +8,7 @@
 import { useEffect } from 'react'
 import type { Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 import type { ContourRange } from '../utils/pitchContour'
 import {
   getContourData,
@@ -26,7 +26,6 @@ interface Props {
   segments: [Segment] | [Segment, Segment]
   range: ContourRange
   theme: ThemeTokens
-  lang?: Lang
   onClose: () => void
 }
 
@@ -39,7 +38,8 @@ const PAD_X    = 52
 const PAD_Y    = 28
 
 
-export function ContourModal({ segments, range, theme, lang = 'zh', onClose }: Props) {
+export function ContourModal({ segments, range, theme, onClose }: Props) {
+  const lang = useLang()
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', h)

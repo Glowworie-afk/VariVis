@@ -13,13 +13,12 @@
 import { useMemo, useState } from 'react'
 import type { PieceData, Segment } from '../types/features'
 import type { ThemeTokens } from '../theme'
-import type { Lang } from '../types/app'
+import { useLang } from '../i18n/LangContext'
 
 interface Props {
   data:   PieceData
   theme:  ThemeTokens
   isDark: boolean
-  lang:   Lang
 }
 
 type KpSrc = 'pyin' | 'chroma' | 'midi'
@@ -364,9 +363,10 @@ function buildMdaTree(_segs: MdaSegment[], data: PieceData): TreeEdge[] {
   return edges
 }
 
-function MdaTree({ data, segs, isDark, lang }: {
-  data: PieceData; segs: MdaSegment[]; isDark: boolean; lang: Lang
+function MdaTree({ data, segs, isDark }: {
+  data: PieceData; segs: MdaSegment[]; isDark: boolean
 }) {
+  const lang = useLang()
   const [hov, setHov] = useState<number|null>(null)
   const edges = useMemo(() => buildMdaTree(segs, data), [segs, data])
 
@@ -599,12 +599,12 @@ function MdaTree({ data, segs, isDark, lang }: {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function MdaAnalysisPage({ data, theme, isDark, lang }: Props) {
+export function MdaAnalysisPage({ data, theme, isDark }: Props) {
   const segs = useMemo(() => computeMda(data), [data])
 
   return (
     <div style={{ fontFamily: theme.fontFamily, padding: '10px 14px' }}>
-      <MdaTree data={data} segs={segs} isDark={isDark} lang={lang} />
+      <MdaTree data={data} segs={segs} isDark={isDark} />
     </div>
   )
 }

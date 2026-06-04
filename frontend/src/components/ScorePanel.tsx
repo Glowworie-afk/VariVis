@@ -2,6 +2,7 @@ import type { ThemeTokens } from '../theme'
 import type { Lang, LoadedPiece } from '../types/app'
 import type { AppNavState } from '../hooks/useAppNav'
 import type { UploadState } from '../hooks/useUpload'
+import { useLang } from '../i18n/LangContext'
 import { API_BASE } from '../api/pieceApi'
 import { ScorePage }    from './ScorePage'
 import { MusicVisPage } from './MusicVisPage'
@@ -11,14 +12,15 @@ interface ScorePanelProps {
   focusedPiece: LoadedPiece | undefined
   upload:       UploadState
   theme:        ThemeTokens
-  lang:         Lang
+  setLang:      (lang: Lang) => void
   listLoading:  boolean
   listError:    string
 }
 
-export function ScorePanel({ nav, focusedPiece, upload, theme, lang, listLoading, listError }: ScorePanelProps) {
+export function ScorePanel({ nav, focusedPiece, upload, theme, setLang, listLoading, listError }: ScorePanelProps) {
   const { scoreMode, setScoreMode, focusedXmlFile } = nav
   const { uploadedPiece, uploadFocused } = upload
+  const lang = useLang()
 
   return (
     <div className="vv-score-panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -51,6 +53,20 @@ export function ScorePanel({ nav, focusedPiece, upload, theme, lang, listLoading
             >Harmonic</button>
           )}
           <div style={{ flex: 1 }} />
+
+          {/* Language toggle */}
+          <button
+            onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
+            title="Toggle language / 切换语言"
+            style={{
+              fontSize: 10, padding: '2px 8px', borderRadius: 4, border: '1px solid #cbd5e1',
+              background: 'transparent', color: '#64748b', cursor: 'pointer', fontWeight: 600,
+              letterSpacing: '0.04em',
+            }}
+          >
+            {lang === 'en' ? '中文' : 'EN'}
+          </button>
+
           {!listLoading && !listError && <div className="vv-online-dot" title="Server online" />}
         </div>
 
@@ -69,20 +85,20 @@ export function ScorePanel({ nav, focusedPiece, upload, theme, lang, listLoading
               )
             ) : (
               uploadedPiece.mxl_stem
-                ? <MusicVisPage theme={theme} lang={lang} xmlFile={uploadedPiece.mxl_stem} />
+                ? <MusicVisPage theme={theme} xmlFile={uploadedPiece.mxl_stem} />
                 : <EmptyState icon="🎵" message="Score View requires a MusicXML file." />
             )
           ) : scoreMode === 'pdf' ? (
             focusedPiece?.viewState === 'ready' && focusedPiece.data ? (
               <ScorePage
-                data={focusedPiece.data} theme={theme} isDark={false} lang={lang}
+                data={focusedPiece.data} theme={theme} isDark={false}
                 fileName={focusedPiece.meta.file_name} composer={focusedPiece.meta.composer}
               />
             ) : (
               <div className="vv-score-panel-empty"><span>Score</span></div>
             )
           ) : (
-            <MusicVisPage theme={theme} lang={lang} xmlFile={focusedXmlFile} />
+            <MusicVisPage theme={theme} xmlFile={focusedXmlFile} />
           )}
         </div>
       </div>
