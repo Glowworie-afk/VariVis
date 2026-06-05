@@ -6,7 +6,6 @@ import type { PieceData } from '@/types/features'
 import type { UploadResult } from '@/features/extraction/UploadModal'
 import { AudioPlayer, type AudioPlayerHandle } from '@/features/structural/SegmentOverview/components/AudioPlayer'
 import { SegmentOverview } from '@/features/structural/SegmentOverview/SegmentOverview'
-import { ExtractionPanel } from '@/features/extraction/ExtractionPanel'
 import { useT } from '@/i18n/LangContext'
 import { API_BASE } from '@/api/pieceApi'
 import { shortName, durationLabel } from '@/utils/pieceHelpers'
@@ -55,22 +54,11 @@ function PieceHeader({ meta, data, color, hasPyin, onRemove }: PieceHeaderProps)
 
 // ── PieceStateMessage ─────────────────────────────────────────────────
 
-function PieceStateMessage({ loadedPiece, theme, onExtractionDone }: {
-  loadedPiece:      LoadedPiece
-  theme:            ThemeTokens
-  onExtractionDone: () => void
-}) {
+function PieceStateMessage({ loadedPiece }: { loadedPiece: LoadedPiece }) {
   const t = useT()
-  const { meta, viewState } = loadedPiece
+  const { viewState } = loadedPiece
   if (viewState === 'loading') {
     return <div className="vv-loading">{t('piece.loading-features')}</div>
-  }
-  if (viewState === 'not-extracted') {
-    return (
-      <div style={{ padding: 16 }}>
-        <ExtractionPanel piece={meta} theme={theme} onDone={onExtractionDone} />
-      </div>
-    )
   }
   if (viewState === 'error') {
     return (
@@ -163,7 +151,6 @@ interface CorpusViewProps {
   colorIdx?:        number
   theme:            ThemeTokens
   onRemove?:        () => void
-  onExtractionDone?: () => void
 }
 
 export function CorpusView({
@@ -175,7 +162,6 @@ export function CorpusView({
   colorIdx = 0,
   theme,
   onRemove,
-  onExtractionDone,
 }: CorpusViewProps) {
   // Hooks must be called before any early returns
   const [audioTime,     setAudioTime]     = useState(0)
@@ -247,11 +233,8 @@ export function CorpusView({
           />
         )}
 
-        {viewState !== 'ready' && onExtractionDone && (
-          <PieceStateMessage
-            loadedPiece={loadedPiece} theme={theme}
-            onExtractionDone={onExtractionDone}
-          />
+        {viewState !== 'ready' && (
+          <PieceStateMessage loadedPiece={loadedPiece} />
         )}
       </div>
     </div>

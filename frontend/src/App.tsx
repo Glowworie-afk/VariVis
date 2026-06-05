@@ -71,11 +71,6 @@ export default function App() {
     await upload.handleUploadSuccess(result)
   }
 
-  function onExtractionDone(fileName: string) {
-    loaded.reload(fileName)
-    pieceList.refresh()
-  }
-
   // ── Layout ────────────────────────────────────────────────────────
 
   return (
@@ -115,7 +110,6 @@ export default function App() {
               colorIdx={loaded.loadedPieces.findIndex(p => p.meta.file_name === focusedPiece.meta.file_name)}
               theme={theme}
               onRemove={() => removePiece(focusedPiece.meta.file_name)}
-              onExtractionDone={() => onExtractionDone(focusedPiece.meta.file_name)}
             />
           )}
 

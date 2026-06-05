@@ -10,7 +10,6 @@ const en = {
   // ── Piece state ───────────────────────────────────────────────────
   'piece.loading-features': 'Loading features…',
   'piece.loading':           'Loading…',
-  'piece.not-extracted':     'Not extracted',
   'server.connecting':       'Connecting to server…',
 
   // ── Corpus view ───────────────────────────────────────────────────
@@ -110,7 +109,6 @@ const zh: Record<keyof typeof en, string> = {
   // ── Piece state ───────────────────────────────────────────────────
   'piece.loading-features': '加载特征中…',
   'piece.loading':           '加载中…',
-  'piece.not-extracted':     '未提取',
   'server.connecting':       '正在连接服务器…',
 
   // ── Corpus view ───────────────────────────────────────────────────
