@@ -101,7 +101,11 @@ export function PieceView({ pieceList, loaded, nav, upload, loadedFileNames, foc
                 className="vv-tree-composer"
                 onClick={() => {
                   const next = new Set(expandedComposers)
-                  next.has(key) ? next.delete(key) : next.add(key)
+                  if (next.has(key)) {
+                    next.delete(key)
+                  } else {
+                    next.add(key)
+                  }
                   setExpandedComposers(next)
                 }}
               >
@@ -118,7 +122,11 @@ export function PieceView({ pieceList, loaded, nav, upload, loadedFileNames, foc
                       className={`vv-tree-piece${anyLoaded ? ' has-loaded' : ''}`}
                       onClick={() => {
                         const next = new Set(expandedPieces)
-                        next.has(id) ? next.delete(id) : next.add(id)
+                        if (next.has(id)) {
+                          next.delete(id)
+                        } else {
+                          next.add(id)
+                        }
                         setExpandedPieces(next)
                       }}
                     >

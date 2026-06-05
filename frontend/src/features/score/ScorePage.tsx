@@ -30,31 +30,46 @@ export function ScorePage({ data, theme, isDark, fileName, composer }: Props) {
 
   useEffect(() => {
     let cancelled = false
-    setStatus('loading')
-    setPdfUrl('')
-    setMatchedFile('')
-    setAvailable([])
 
-    fetch(`${API}/api/score/match?file_name=${encodeURIComponent(fileName)}&music_name=${encodeURIComponent(data.metadata.music_name ?? '')}`)
-      .then(r => r.json())
-      .then(json => {
+    const loadScore = async () => {
+      // Set initial loading state
+      setStatus('loading')
+      setPdfUrl('')
+      setMatchedFile('')
+      setAvailable([])
+
+      try {
+        const response = await fetch(`${API}/api/score/match?file_name=${encodeURIComponent(fileName)}&music_name=${encodeURIComponent(data.metadata.music_name ?? '')}`)
+        const json = await response.json()
+
         if (cancelled) return
+
         setAvailable(json.available ?? [])
         if (!json.matched || json.score < 0.3) {
           setStatus('not_found')
+          setPdfUrl('')
+          setMatchedFile('')
           return
         }
-        setMatchedFile(json.pdf_name ?? '')
+
         const url = `${API}/api/score/pdf/${encodeURIComponent(fileName)}`
+        setMatchedFile(json.pdf_name ?? '')
         setPdfUrl(url)
         setStatus('ready')
-      })
-      .catch(() => {
-        if (!cancelled) setStatus('error')
-      })
+      } catch {
+        if (!cancelled) {
+          setStatus('error')
+          setPdfUrl('')
+          setMatchedFile('')
+          setAvailable([])
+        }
+      }
+    }
+
+    loadScore()
 
     return () => { cancelled = true }
-  }, [fileName])
+  }, [fileName, data.metadata.music_name])
 
   return (
     <div style={{ fontFamily: theme.fontFamily, color: theme.labelColor, display: 'flex', flexDirection: 'column', height: '100%' }}>

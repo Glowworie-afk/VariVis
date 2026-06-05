@@ -270,7 +270,7 @@ interface ProfilePanelProps {
   width:    number
 }
 
-function VariationProfilePanel({ seg, deltaRow, rawRow: _rawRow, defs, isTheme, onClose, width }: ProfilePanelProps) {
+function VariationProfilePanel({ seg, deltaRow, defs, isTheme, onClose, width }: ProfilePanelProps) {
   const items = defs
     .map((d, i) => ({ def: d, delta: deltaRow[i] }))
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))

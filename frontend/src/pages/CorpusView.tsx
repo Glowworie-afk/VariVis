@@ -177,6 +177,10 @@ export function CorpusView({
   onRemove,
   onExtractionDone,
 }: CorpusViewProps) {
+  // Hooks must be called before any early returns
+  const [audioTime,     setAudioTime]     = useState(0)
+  const [isMainPlaying, setIsMainPlaying] = useState(false)
+  const playerRef = useRef<AudioPlayerHandle>(null)
 
   // Upload mode
   if (uploadFocused && uploadedPiece) {
@@ -197,10 +201,6 @@ export function CorpusView({
   const hasPyin = (data?.segments[0]?.features.pitch_contour?.midi_relative?.length ?? 0) > 0
   const color   = pieceColor(colorIdx)
   const isReady = viewState === 'ready'
-
-  const [audioTime,     setAudioTime]     = useState(0)
-  const [isMainPlaying, setIsMainPlaying] = useState(false)
-  const playerRef = useRef<AudioPlayerHandle>(null)
 
   const audioSrc = `${API_BASE}/audio/${encodeURIComponent(meta.file_name)}?folder=${encodeURIComponent(meta.folder)}`
 

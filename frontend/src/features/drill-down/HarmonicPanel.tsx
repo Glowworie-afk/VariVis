@@ -292,7 +292,13 @@ export function HarmonicPanel({ theme, xmlFile }: Props) {
     if (!containerRef.current) return
 
     if (osmdRef.current) {
-      try { (osmdRef.current as any).clear?.() } catch {}
+      try {
+        const osmd = osmdRef.current as unknown as { clear?: () => void }
+        osmd.clear?.()
+      } catch (e) {
+        // OSMD cleanup may fail, ignore
+        console.warn('OSMD clear failed:', e)
+      }
       osmdRef.current = null
     }
     containerRef.current.innerHTML = ''
@@ -320,7 +326,8 @@ export function HarmonicPanel({ theme, xmlFile }: Props) {
     try {
       await osmd.load(xmlText)
 
-      const rules = (osmd as any).EngravingRules ?? (osmd as any).rules
+      const osmdInternal = osmd as unknown as { EngravingRules?: unknown; rules?: unknown }
+      const rules = osmdInternal.EngravingRules ?? osmdInternal.rules
       if (rules) {
         const hi = maxMeasure >= 9999 ? Number.MAX_VALUE : maxMeasure - 1
         rules.MinMeasureToDrawIndex  = minMeasure
@@ -336,10 +343,11 @@ export function HarmonicPanel({ theme, xmlFile }: Props) {
     osmdRef.current = osmd
 
     try {
-      const gSheet = (osmd as any).GraphicSheet
+      const osmdInternal = osmd as unknown as { GraphicSheet?: { MeasureList?: unknown[][] } }
+      const gSheet = osmdInternal.GraphicSheet
       const posList: MeasurePos[] = []
       if (gSheet?.MeasureList) {
-        ;(gSheet.MeasureList as any[][]).forEach((staffMeasures, i) => {
+        gSheet.MeasureList.forEach((staffMeasures, i) => {
           if (i < minMeasure) return
           if (maxMeasure < 9999 && i >= maxMeasure) return
           if (!staffMeasures?.length) return
@@ -363,8 +371,8 @@ export function HarmonicPanel({ theme, xmlFile }: Props) {
         })
       }
       setMeasurePos(posList)
-    } catch (_) {
-      // Silently ignore
+    } catch {
+      // Silently ignore measure position extraction errors
     }
 
     setStatus('ready')

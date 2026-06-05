@@ -7,9 +7,9 @@ import type { PieceData, Segment } from '@/types/features'
 import type { ThemeTokens } from '@/constants/theme'
 import { useLang } from '@/i18n/LangContext'
 
-import { PitchPanel } from '@/drill-down/PitchPanel/PitchPanel'
-import { RhythmPanel } from '@/drill-down/RhythmPanel'
-import { SimilarityTree } from '@/SimilarityTree'
+import { PitchPanel } from '@/features/drill-down/PitchPanel/PitchPanel'
+import { RhythmPanel } from '@/features/drill-down/RhythmPanel'
+import { SimilarityTree } from '@/features/structural/SimilarityTree'
 import { API_BASE } from '@/api/pieceApi'
 type DetailTab = 'pitch' | 'rhythm' | 'mda'
 
@@ -222,8 +222,7 @@ interface Props {
 }
 
 export function SegmentOverview({
-  data, theme, isDark, fileName, hasMidi: _hasMidi,
-  onSeekMain: _onSeekMain, playMain: _playMain, pauseMain: _pauseMain,
+  data, theme, isDark, fileName,
   mainTime = 0, isMainPlaying = false,
 }: Props) {
   const lang = useLang()
@@ -244,8 +243,8 @@ export function SegmentOverview({
   const mxlNotesRef   = useRef<MxlNote[]>([])
   const mxlSegsRef    = useRef<MxlSeg[]>([])
   const toneRef       = useRef<typeof import('tone') | null>(null)
-  const synthRef      = useRef<any>(null)
-  const partRef       = useRef<any>(null)
+  const synthRef      = useRef<unknown>(null)
+  const partRef       = useRef<unknown>(null)
   const fetchedForRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -312,7 +311,7 @@ export function SegmentOverview({
     transport.cancel()
     transport.stop()
 
-    const part = new Tone.Part((time: number, ev: any) => {
+    const part = new Tone.Part((time: number, ev: { note: string; dur: string; vel: number }) => {
       synth.triggerAttackRelease(ev.note, ev.dur, time, ev.vel)
     }, events.map(ev => [ev.time, ev]))
     part.start(0)
@@ -332,7 +331,6 @@ export function SegmentOverview({
 
   useEffect(() => {
     return () => { stopSynth() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function isSegPlaying(i: number): boolean {

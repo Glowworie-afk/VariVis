@@ -21,7 +21,11 @@ export function usePieceList(onLoaded?: (list: PieceMeta[]) => void): PieceListS
 
   // Keep a stable ref so the async callback always sees the latest onLoaded
   const onLoadedRef = useRef(onLoaded)
-  onLoadedRef.current = onLoaded
+
+  // Update ref in effect to avoid updating during render
+  useEffect(() => {
+    onLoadedRef.current = onLoaded
+  })
 
   useEffect(() => {
     fetchPieces()

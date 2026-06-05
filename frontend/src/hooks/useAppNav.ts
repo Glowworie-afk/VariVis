@@ -41,10 +41,14 @@ export function useAppNav(
   // Auto-revert to PDF when the focused context loses its MusicXML source
   useEffect(() => {
     if (scoreMode !== 'musicxml') return
-    if (uploadFocused) {
-      if (!uploadedPiece?.mxl_stem || focusedXmlFile === '') setScoreMode('pdf')
-    } else if (focusedFile && focusedXmlFile === '') {
-      setScoreMode('pdf')
+
+    const shouldRevert = uploadFocused
+      ? !uploadedPiece?.mxl_stem || focusedXmlFile === ''
+      : focusedFile && focusedXmlFile === ''
+
+    if (shouldRevert) {
+      // Use queueMicrotask to avoid setState during render
+      queueMicrotask(() => setScoreMode('pdf'))
     }
   }, [focusedXmlFile, focusedFile, scoreMode, uploadFocused, uploadedPiece])
 
