@@ -5,10 +5,10 @@
 
 import { useMemo } from 'react'
 import { arc } from 'd3'
-import type { Segment } from '../../../../types/features'
-import type { ThemeTokens } from '../../../../theme'
-import { chromaOuterRadius } from '../../../../utils/normalize'
-import { COF_NAMES } from '../../../../constants/colors'
+import type { Segment } from '@/types/features'
+import type { ThemeTokens } from '@/constants/theme'
+import { chromaOuterRadius } from '@/utils/normalize'
+import { COF_NAMES } from '@/constants/colors'
 
 // ── Geometry constants ───────────────────────────────────────────────
 const VBOX       = 280

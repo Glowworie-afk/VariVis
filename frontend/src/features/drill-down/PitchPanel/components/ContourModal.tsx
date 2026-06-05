@@ -6,10 +6,10 @@
  */
 
 import { useEffect } from 'react'
-import type { Segment } from '../../../../types/features'
-import type { ThemeTokens } from '../../../../theme'
-import { useLang } from '../../../../i18n/LangContext'
-import type { ContourRange } from '../../../../utils/pitchContour'
+import type { Segment } from '@/types/features'
+import type { ThemeTokens } from '@/constants/theme'
+import { useLang } from '@/i18n/LangContext'
+import type { ContourRange } from '@/utils/pitchContour'
 import {
   getContourData,
   normaliseContour,
@@ -18,8 +18,8 @@ import {
   yAxisTicks,
   dtwWarpOntoA,
   dtwSimilarity,
-} from '../../../../utils/pitchContour'
-import { labelColor } from '../../../../constants/colors'
+} from '@/utils/pitchContour'
+import { labelColor } from '@/constants/colors'
 import { RingCard } from './RingCard'
 
 interface Props {

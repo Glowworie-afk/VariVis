@@ -1,6 +1,5 @@
 // useAppNav — Owns all navigation and view-mode state for the three-panel layout:
 //   focusedFile      which piece is active in the main panel
-//   activeTab        which analysis tab is shown (corpus_view)
 //   scoreMode        right panel mode: PDF score vs MusicXML harmonic view
 //   expandedComposers/Pieces  sidebar tree open/close state
 //   focusedXmlFile   derived: resolves the MusicXML filename for the focused context
@@ -8,14 +7,11 @@
 // context loses its MusicXML source (e.g. switching to a piece with no .mxl file).
 
 import { useState, useMemo, useEffect } from 'react'
-import type { PieceTab } from '../types/app'
-import type { UploadResult } from '../features/extraction/UploadModal'
+import type { UploadResult } from '@/features/extraction/UploadModal'
 
 export interface AppNavState {
   focusedFile:          string | null
   setFocusedFile:       (f: string | null) => void
-  activeTab:            PieceTab
-  setActiveTab:         (t: PieceTab) => void
   scoreMode:            'pdf' | 'musicxml'
   setScoreMode:         (m: 'pdf' | 'musicxml') => void
   expandedComposers:    Set<string>
@@ -31,7 +27,6 @@ export function useAppNav(
   musicxmlFiles:  string[],
 ): AppNavState {
   const [focusedFile,       setFocusedFile]       = useState<string | null>(null)
-  const [activeTab,         setActiveTab]         = useState<PieceTab>('corpus_view')
   const [scoreMode,         setScoreMode]         = useState<'pdf' | 'musicxml'>('pdf')
   const [expandedComposers, setExpandedComposers] = useState<Set<string>>(new Set())
   const [expandedPieces,    setExpandedPieces]    = useState<Set<string>>(new Set())
@@ -55,7 +50,6 @@ export function useAppNav(
 
   return {
     focusedFile, setFocusedFile,
-    activeTab, setActiveTab,
     scoreMode, setScoreMode,
     expandedComposers, setExpandedComposers,
     expandedPieces, setExpandedPieces,

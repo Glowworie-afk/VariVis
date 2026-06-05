@@ -11,9 +11,9 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay'
-import type { ThemeTokens } from '../../theme'
-import { useLang } from '../../i18n/LangContext'
-import { API_BASE } from '../../api/pieceApi'
+import type { ThemeTokens } from '@/constants/theme'
+import { useLang } from '@/i18n/LangContext'
+import { API_BASE } from '@/api/pieceApi'
 
 // ── Types ─────────────────────────────────────────────────────────────
 

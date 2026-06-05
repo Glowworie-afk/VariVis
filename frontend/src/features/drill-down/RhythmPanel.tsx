@@ -7,13 +7,13 @@
 //   TEXT IN CIRCLE = onset density value (x.x)  (shown when circle large enough)
 
 import { useState } from 'react'
-import type { PieceData } from '../../types/features'
-import type { getTheme } from '../../theme'
-import { useLang } from '../../i18n/LangContext'
+import type { PieceData } from '@/types/features'
+import type { ThemeTokens } from '@/constants/theme'
+import { useLang } from '@/i18n/LangContext'
 
 interface Props {
   data:        PieceData
-  theme:       ReturnType<typeof getTheme>
+  theme:       ThemeTokens
   isDark:      boolean
   selectedSeg?: number | null
 }

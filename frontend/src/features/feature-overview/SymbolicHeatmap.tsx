@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_BASE } from '../../api/pieceApi'
+import { API_BASE } from '@/api/pieceApi'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

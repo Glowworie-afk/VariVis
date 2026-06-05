@@ -6,9 +6,9 @@
 // since scoreMode lives in useAppNav (cross-hook coordination).
 
 import { useState } from 'react'
-import { fetchFeatures, API_BASE } from '../api/pieceApi'
-import type { PieceData } from '../types/features'
-import type { UploadResult } from '../features/extraction/UploadModal'
+import { fetchFeatures, API_BASE } from '@/api/pieceApi'
+import type { PieceData } from '@/types/features'
+import type { UploadResult } from '@/features/extraction/UploadModal'
 
 export interface UploadState {
   uploadedPiece:       UploadResult | null

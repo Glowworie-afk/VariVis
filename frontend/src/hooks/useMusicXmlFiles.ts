@@ -3,7 +3,7 @@
 // Exposes refresh() so callers can re-sync the list after an upload or deletion.
 
 import { useState, useEffect } from 'react'
-import { API_BASE } from '../api/pieceApi'
+import { API_BASE } from '@/api/pieceApi'
 
 export interface MusicXmlFilesState {
   files:   string[]

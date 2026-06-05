@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef, useState, useEffect, useCallback } from 'react'
-import type { ThemeTokens } from '../../../../theme'
+import type { ThemeTokens } from '@/constants/theme'
 
 // Imperative handle exposed to parent components via ref.
 export interface AudioPlayerHandle {

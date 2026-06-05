@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getTheme } from './theme'
+import { theme } from './constants/theme'
 import type { Lang } from './types/app'
 import type { UploadResult } from './features/extraction/UploadModal'
 import { COMPOSER_GROUPS } from './constants/pieces'
@@ -14,8 +14,6 @@ import { usePieceList }     from './hooks/usePieceList'
 import { PieceView }  from './pages/PieceView'
 import { ScoreView }  from './pages/ScoreView'
 import { CorpusView } from './pages/CorpusView'
-
-const theme = getTheme('scientific')
 
 function ConnectionError({ error }: { error: string }) {
   return (

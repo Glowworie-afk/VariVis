@@ -12,17 +12,17 @@
  */
 
 import { useState, useMemo } from 'react'
-import type { PieceData } from '../../../types/features'
-import type { ThemeTokens } from '../../../theme'
-import { useLang } from '../../../i18n/LangContext'
+import type { PieceData } from '@/types/features'
+import type { ThemeTokens } from '@/constants/theme'
+import { useLang } from '@/i18n/LangContext'
 import {
   getContourData,
   normaliseContour,
   contourToPath,
   contourToAreaPath,
   globalContourRange,
-} from '../../../utils/pitchContour'
-import { labelColor } from '../../../constants/colors'
+} from '@/utils/pitchContour'
+import { labelColor } from '@/constants/colors'
 import { ContourModal } from './components/ContourModal'
 
 // ── Card chart dimensions ──────────────────────────────────────────

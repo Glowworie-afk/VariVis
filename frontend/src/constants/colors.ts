@@ -20,22 +20,6 @@ export const CHROMA_COLORS_SCIENTIFIC: string[] = [
   'hsl(330,70%,52%)',  // F   rose
 ]
 
-// Artistic theme: sat 90%, lightness 60% — more vivid
-export const CHROMA_COLORS_ARTISTIC: string[] = [
-  'hsl(0,90%,60%)',
-  'hsl(30,90%,60%)',
-  'hsl(60,90%,58%)',
-  'hsl(90,90%,55%)',
-  'hsl(120,85%,52%)',
-  'hsl(150,85%,52%)',
-  'hsl(180,88%,55%)',
-  'hsl(210,88%,65%)',
-  'hsl(240,85%,68%)',
-  'hsl(270,82%,65%)',
-  'hsl(300,82%,65%)',
-  'hsl(330,88%,63%)',
-]
-
 /**
  * Mode indicator dot color.
  * mode_score ∈ [-1, +1]: +1 = major, -1 = minor

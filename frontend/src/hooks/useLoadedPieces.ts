@@ -4,9 +4,9 @@
 // Exposes loadPiece (add + fetch), removeFromLoaded (discard), and reload (re-fetch after extraction).
 
 import { useState } from 'react'
-import { fetchFeatures, NotExtractedError } from '../api/pieceApi'
-import type { PieceMeta } from '../api/pieceApi'
-import type { LoadedPiece, PieceViewState } from '../types/app'
+import { fetchFeatures, NotExtractedError } from '@/api/pieceApi'
+import type { PieceMeta } from '@/api/pieceApi'
+import type { LoadedPiece, PieceViewState } from '@/types/app'
 
 export interface LoadedPiecesState {
   loadedPieces:   LoadedPiece[]

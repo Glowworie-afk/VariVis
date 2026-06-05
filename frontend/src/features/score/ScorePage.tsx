@@ -2,10 +2,10 @@
 //  Sheet Music View — serves matched IMSLP PDF via iframe
 
 import { useEffect, useState, type ReactNode } from 'react'
-import type { PieceData } from '../../types/features'
-import type { ThemeTokens } from '../../theme'
-import { useLang } from '../../i18n/LangContext'
-import { API_BASE } from '../../api/pieceApi'
+import type { PieceData } from '@/types/features'
+import type { ThemeTokens } from '@/constants/theme'
+import { useLang } from '@/i18n/LangContext'
+import { API_BASE } from '@/api/pieceApi'
 
 interface Props {
   data:     PieceData

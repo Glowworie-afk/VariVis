@@ -3,14 +3,14 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react'
-import type { PieceData, Segment } from '../../../types/features'
-import type { ThemeTokens } from '../../../theme'
-import { useLang } from '../../../i18n/LangContext'
+import type { PieceData, Segment } from '@/types/features'
+import type { ThemeTokens } from '@/constants/theme'
+import { useLang } from '@/i18n/LangContext'
 
-import { PitchPanel } from '../../drill-down/PitchPanel/PitchPanel'
-import { RhythmPanel } from '../../drill-down/RhythmPanel'
-import { SimilarityTree } from '../SimilarityTree'
-import { API_BASE } from '../../../api/pieceApi'
+import { PitchPanel } from '@/drill-down/PitchPanel/PitchPanel'
+import { RhythmPanel } from '@/drill-down/RhythmPanel'
+import { SimilarityTree } from '@/SimilarityTree'
+import { API_BASE } from '@/api/pieceApi'
 type DetailTab = 'pitch' | 'rhythm' | 'mda'
 
 // ── Shared glyph geometry ─────────────────────────────────────────────

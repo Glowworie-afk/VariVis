@@ -1,5 +1,5 @@
-import type { PieceMeta } from '../api/pieceApi'
-import type { PieceData } from '../types/features'
+import type { PieceMeta } from '@/api/pieceApi'
+import type { PieceData } from '@/types/features'
 
 /** Extract the performance version number from a file_name like "WAMozart_K265_3" → 3 */
 export function perfVersion(fileName: string): number | null {

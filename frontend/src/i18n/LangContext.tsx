@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react'
-import type { Lang } from '../types/app'
+import type { Lang } from '@/types/app'
 import { translations, type TKey } from './translations'
 
 const LangContext = createContext<Lang>('en')

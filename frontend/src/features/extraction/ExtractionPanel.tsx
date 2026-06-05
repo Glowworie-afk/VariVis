@@ -6,9 +6,9 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import type { ThemeTokens } from '../../theme'
-import type { PieceMeta, ExtractionEvent } from '../../api/pieceApi'
-import { streamExtraction } from '../../api/pieceApi'
+import type { ThemeTokens } from '@/constants/theme'
+import type { PieceMeta, ExtractionEvent } from '@/api/pieceApi'
+import { streamExtraction } from '@/api/pieceApi'
 
 const IS_DEV = import.meta.env.DEV
 

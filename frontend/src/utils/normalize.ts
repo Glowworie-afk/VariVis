@@ -1,5 +1,5 @@
 // VariVis — Feature normalization utilities
-import type { Segment, SegmentFeatures } from '../types/features'
+import type { Segment, SegmentFeatures } from '@/types/features'
 
 /** Clamp x into [lo, hi] */
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))

@@ -1,7 +1,4 @@
-// VariVis — Theme tokens
-// Two modes: 'scientific' (white, precise) and 'artistic' (dark, vivid)
-
-export type ThemeMode = 'scientific' | 'artistic'
+import { CHROMA_COLORS_SCIENTIFIC } from './colors'
 
 export interface ThemeTokens {
   // Layout
@@ -12,7 +9,7 @@ export interface ThemeTokens {
 
   // Glyph
   glyphBg: string
-  glyphBackgroundTintOpacity: number   // opacity of dominant-hue tint
+  glyphBackgroundTintOpacity: number
   chromaFillOpacity: number
   chromaStroke: string
   chromaStrokeWidth: number
@@ -25,7 +22,7 @@ export interface ThemeTokens {
   timbreStroke: string
   timbreStrokeWidth: number
   modeDotRadius: number
-  glyphFilter: string                  // SVG filter id ('' = none)
+  glyphFilter: string
 
   // Feature stripe
   stripeBg: string
@@ -40,17 +37,11 @@ export interface ThemeTokens {
   fontSizeLabel: number
   fontSizeMeta: number
 
-  // Rhythm polygon axis labels
   showAxisLabels: boolean
-
-  // Chroma colors key
   chromaColors: string[]
 }
 
-import { CHROMA_COLORS_SCIENTIFIC, CHROMA_COLORS_ARTISTIC } from '../constants/colors'
-
-export const SCIENTIFIC: ThemeTokens = {
-  // ── updated: clean white modern light ──
+export const theme: ThemeTokens = {
   pageBg:         '#F8F9FC',
   cardBg:         '#FFFFFF',
   cardBorder:     '1px solid rgba(0,0,0,0.07)',
@@ -85,45 +76,4 @@ export const SCIENTIFIC: ThemeTokens = {
 
   showAxisLabels:        true,
   chromaColors:          CHROMA_COLORS_SCIENTIFIC,
-}
-
-export const ARTISTIC: ThemeTokens = {
-  pageBg:         '#0D0D1A',
-  cardBg:         '#161628',
-  cardBorder:     '1px solid #252545',
-  cardShadow:     '0 4px 24px rgba(0,0,0,0.5)',
-
-  glyphBg:                    'transparent',
-  glyphBackgroundTintOpacity: 0.18,
-  chromaFillOpacity:          0.88,
-  chromaStroke:               'rgba(0,0,0,0.3)',
-  chromaStrokeWidth:          0.4,
-  rhythmFill:                 '#C8D6E5',
-  rhythmFillOpacity:          0.08,
-  rhythmStroke:               '#A8BFCF',
-  rhythmStrokeWidth:          1.2,
-  timbreFill:                 '#94A3B8',
-  timbreFillOpacity:          0.14,
-  timbreStroke:               '#94A3B8',
-  timbreStrokeWidth:          1.0,
-  modeDotRadius:              9,
-  glyphFilter:                'url(#glyph-glow)',
-
-  stripeBg:              '#0F0F1E',
-  stripeRowGap:          1,
-
-  labelColor:            '#E2E8F0',
-  labelSecondaryColor:   '#64748B',
-  axisLabelColor:        'transparent',
-  axisLabelVisible:      false,
-  fontFamily:            '"Inter", system-ui, sans-serif',
-  fontSizeLabel:         13,
-  fontSizeMeta:          10,
-
-  showAxisLabels:        false,
-  chromaColors:          CHROMA_COLORS_ARTISTIC,
-}
-
-export function getTheme(mode: ThemeMode): ThemeTokens {
-  return mode === 'scientific' ? SCIENTIFIC : ARTISTIC
 }

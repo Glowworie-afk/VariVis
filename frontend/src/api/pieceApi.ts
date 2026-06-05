@@ -5,7 +5,7 @@
  * All requests go to /api/* which Vite proxies to localhost:8000.
  */
 
-import type { PieceData } from '../types/features'
+import type { PieceData } from '@/types/features'
 
 // ── Types ──────────────────────────────────────────────────────────
 

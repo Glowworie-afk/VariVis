@@ -1,11 +1,11 @@
-import type { ThemeTokens } from '../theme'
-import type { Lang, LoadedPiece } from '../types/app'
-import type { AppNavState } from '../hooks/useAppNav'
-import type { UploadState } from '../hooks/useUpload'
-import { useLang } from '../i18n/LangContext'
-import { API_BASE } from '../api/pieceApi'
-import { ScorePage }    from '../features/score/ScorePage'
-import { HarmonicPanel } from '../features/drill-down/HarmonicPanel'
+import type { ThemeTokens } from '@/constants/theme'
+import type { Lang, LoadedPiece } from '@/types/app'
+import type { AppNavState } from '@/hooks/useAppNav'
+import type { UploadState } from '@/hooks/useUpload'
+import { useLang } from '@/i18n/LangContext'
+import { API_BASE } from '@/api/pieceApi'
+import { ScorePage }    from '@/features/score/ScorePage'
+import { HarmonicPanel } from '@/features/drill-down/HarmonicPanel'
 
 interface ScoreViewProps {
   nav:          AppNavState

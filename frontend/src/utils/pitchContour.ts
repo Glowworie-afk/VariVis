@@ -18,7 +18,7 @@
  *                      with a minimum span of 12 semitones (one octave).
  */
 
-import type { Segment } from '../types/features'
+import type { Segment } from '@/types/features'
 
 // ─────────────────────────────────────────────────────────────────
 // Constants

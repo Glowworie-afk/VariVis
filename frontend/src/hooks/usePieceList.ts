@@ -4,8 +4,8 @@
 // allowing the caller to bootstrap derived state (e.g. select the first piece).
 
 import { useState, useEffect, useRef } from 'react'
-import { fetchPieces } from '../api/pieceApi'
-import type { PieceMeta } from '../api/pieceApi'
+import { fetchPieces } from '@/api/pieceApi'
+import type { PieceMeta } from '@/api/pieceApi'
 
 export interface PieceListState {
   pieces:      PieceMeta[]

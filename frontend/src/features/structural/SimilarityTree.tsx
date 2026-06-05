@@ -3,9 +3,9 @@
 // Computes kp / kt / kh / k entirely from pre-extracted audio features.
 
 import { useMemo, useState } from 'react'
-import type { PieceData, Segment } from '../../types/features'
-import type { ThemeTokens } from '../../theme'
-import { useLang } from '../../i18n/LangContext'
+import type { PieceData, Segment } from '@/types/features'
+import type { ThemeTokens } from '@/constants/theme'
+import { useLang } from '@/i18n/LangContext'
 
 interface Props {
   data:   PieceData

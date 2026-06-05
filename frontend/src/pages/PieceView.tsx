@@ -1,13 +1,13 @@
-import type { LoadedPiece } from '../types/app'
-import type { PieceListState } from '../hooks/usePieceList'
-import type { LoadedPiecesState } from '../hooks/useLoadedPieces'
-import type { AppNavState } from '../hooks/useAppNav'
-import type { UploadState } from '../hooks/useUpload'
-import { useLang, useT } from '../i18n/LangContext'
-import { perfVersion, pieceTitle, catalogNum, groupPieces } from '../utils/pieceHelpers'
-import { COMPOSER_GROUPS } from '../constants/pieces'
-import { SymbolicHeatmap } from '../features/feature-overview/SymbolicHeatmap'
-import UploadModal from '../features/extraction/UploadModal'
+import type { LoadedPiece } from '@/types/app'
+import type { PieceListState } from '@/hooks/usePieceList'
+import type { LoadedPiecesState } from '@/hooks/useLoadedPieces'
+import type { AppNavState } from '@/hooks/useAppNav'
+import type { UploadState } from '@/hooks/useUpload'
+import { useLang, useT } from '@/i18n/LangContext'
+import { perfVersion, pieceTitle, catalogNum, groupPieces } from '@/utils/pieceHelpers'
+import { COMPOSER_GROUPS } from '@/constants/pieces'
+import { SymbolicHeatmap } from '@/features/feature-overview/SymbolicHeatmap'
+import UploadModal from '@/features/extraction/UploadModal'
 
 interface SidebarProps {
   pieceList:       PieceListState
