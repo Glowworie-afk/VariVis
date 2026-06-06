@@ -13,6 +13,7 @@ TV_dataset_audio/
 backend/data/TV_MIDI/
 backend/data/IMSLP/
 backend/data/MusicXML/
+backend/data/scores/
 
 # System
 .DS_Store

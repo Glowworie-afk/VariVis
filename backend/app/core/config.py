@@ -24,8 +24,10 @@ AUDIO_DIR    = BASE_DIR / "TV_dataset_audio"
 MIDI_DIR     = DATA_DIR / "TV_MIDI"
 IMSLP_DIR    = DATA_DIR / "IMSLP"
 MUSICXML_DIR = DATA_DIR / "MusicXML"
+SCORES_DIR   = DATA_DIR / "scores"
 
 # Ensure writable dirs exist at import time
 FEATURE_DIR.mkdir(exist_ok=True)
 TEMP_FEATURE_DIR.mkdir(exist_ok=True)
 MUSICXML_DIR.mkdir(exist_ok=True)
+SCORES_DIR.mkdir(exist_ok=True)

@@ -13,10 +13,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from app.core.config import BASE_DIR, MUSICXML_DIR
-
-SCORES_DIR = BASE_DIR / "scores"
-SCORES_DIR.mkdir(exist_ok=True)
+from app.core.config import MUSICXML_DIR, SCORES_DIR
 
 _SCORE_MAP: dict[str, str] = {
     # ── Beethoven WoO ──────────────────────────────────────────────────
