@@ -20,10 +20,12 @@ IMSLP_DIR    = BASE_DIR / "IMSLP"
 MUSICXML_DIR = BASE_DIR / "MusicXML"
 
 # Backend data
-FEATURE_DIR  = BACKEND_DIR / "features"
-DATA_DIR     = BACKEND_DIR / "data"
-ANNOTATION   = DATA_DIR / "TV_annotation.xlsx"
+FEATURE_DIR      = BACKEND_DIR / "features"
+TEMP_FEATURE_DIR = FEATURE_DIR / "temp"
+DATA_DIR         = BACKEND_DIR / "data"
+ANNOTATION       = DATA_DIR / "TV_annotation.xlsx"
 
 # Ensure writable dirs exist at import time
 FEATURE_DIR.mkdir(exist_ok=True)
+TEMP_FEATURE_DIR.mkdir(exist_ok=True)
 MUSICXML_DIR.mkdir(exist_ok=True)

@@ -13,7 +13,7 @@ import re
 
 from fastapi import APIRouter, HTTPException
 
-from app.core.config import FEATURE_DIR
+from app.core.config import FEATURE_DIR, TEMP_FEATURE_DIR
 from app.services.midi import find_midi_file
 from app.services.musicxml import extract_mxl, find_musicxml, get_musicxml_sections
 from app.services.symbolic import (
@@ -82,7 +82,8 @@ def get_symbolic_features(file_name: str):
         }
 
     # ── 3. Fallback: MIDI + audio timestamps ───────────────────────────
-    feat_path = FEATURE_DIR / f"{file_name}.json"
+    feat_dir  = TEMP_FEATURE_DIR if piece_stem.startswith("temp_") else FEATURE_DIR
+    feat_path = feat_dir / f"{file_name}.json"
     if not feat_path.exists():
         raise HTTPException(
             404,

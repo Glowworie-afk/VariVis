@@ -20,7 +20,7 @@ import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from app.core.config import FEATURE_DIR, IMSLP_DIR, MUSICXML_DIR
+from app.core.config import IMSLP_DIR, MUSICXML_DIR, TEMP_FEATURE_DIR
 from app.services.pitch_contour import extract_pitch_contour
 from app.services.score_pitch import build_score_contours, label_key
 from app.services.symbolic import parse_mxl_symbolic
@@ -395,7 +395,7 @@ async def upload_and_process(
             "segments": segments_out,
         }
 
-        out_path = FEATURE_DIR / f"{temp_name}.json"
+        out_path = TEMP_FEATURE_DIR / f"{temp_name}.json"
         with open(out_path, "w", encoding="utf-8") as fh:
             json.dump(feature_json, fh, ensure_ascii=False, indent=2)
 
@@ -429,7 +429,7 @@ def delete_temp_upload(temp_name: str):
     if not temp_name.startswith("temp_"):
         raise HTTPException(400, "Invalid temp name.")
 
-    feat_path = FEATURE_DIR / f"{temp_name}.json"
+    feat_path = TEMP_FEATURE_DIR / f"{temp_name}.json"
     if feat_path.exists():
         feat_path.unlink()
 
