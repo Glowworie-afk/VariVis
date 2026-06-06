@@ -13,17 +13,17 @@ BACKEND_DIR  = Path(__file__).parent.parent.parent
 # VariVis/  (project root)
 BASE_DIR     = BACKEND_DIR.parent
 
-# Data directories (external datasets — not checked into git)
-AUDIO_DIR    = BASE_DIR / "TV_dataset_audio"
-MIDI_DIR     = BASE_DIR / "TV_MIDI"
-IMSLP_DIR    = BASE_DIR / "IMSLP"
-MUSICXML_DIR = BASE_DIR / "MusicXML"
-
 # Backend data
+DATA_DIR         = BACKEND_DIR / "data"
 FEATURE_DIR      = BACKEND_DIR / "features"
 TEMP_FEATURE_DIR = FEATURE_DIR / "temp"
-DATA_DIR         = BACKEND_DIR / "data"
 ANNOTATION       = DATA_DIR / "TV_annotation.xlsx"
+
+# Data directories (external datasets — not checked into git)
+AUDIO_DIR    = BASE_DIR / "TV_dataset_audio"
+MIDI_DIR     = DATA_DIR / "TV_MIDI"
+IMSLP_DIR    = DATA_DIR / "IMSLP"
+MUSICXML_DIR = DATA_DIR / "MusicXML"
 
 # Ensure writable dirs exist at import time
 FEATURE_DIR.mkdir(exist_ok=True)

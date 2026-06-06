@@ -1,4 +1,3 @@
-cat > .gitignore << 'EOF'
 # Python
 backend/.venv/
 backend/__pycache__/
@@ -9,9 +8,12 @@ backend/**/__pycache__/
 frontend/node_modules/
 frontend/dist/
 
-# 音频文件
+# Large external datasets — not checked into git
 TV_dataset_audio/
+backend/data/TV_MIDI/
+backend/data/IMSLP/
+backend/data/MusicXML/
 
-# 系统
+# System
 .DS_Store
-EOF.claude/
+.claude/
