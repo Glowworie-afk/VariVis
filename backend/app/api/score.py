@@ -8,15 +8,11 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response
 
-from app.core.config import ANNOTATION, MUSICXML_DIR
-from app.services.midi import find_midi_file
+from app.core.config import ANNOTATION
 from app.services.musicxml import (
-    _SCORE_MAP,
     extract_mxl,
-    find_local_score,
     find_musicxml,
     get_musicxml_sections,
-    score_cache_path,
 )
 from app.services.score_matching import best_imslp_match
 
@@ -70,61 +66,15 @@ def match_score(file_name: str = "", music_name: str = ""):
 
 @router.get("/api/score/musicxml/{file_name}")
 def get_musicxml(file_name: str):
-    """
-    Serve MusicXML for a piece.  Priority:
-      1. scores/<stem>.cached.xml  — previously converted
-      2. scores/<stem>.mxl/.xml    — user-placed IMSLP file
-      3. TV_MIDI/<matched>.mid     — MIDI → MusicXML via music21
-    """
-    import re
-    import music21
-
-    cache = score_cache_path(file_name)
-
-    if cache.exists():
-        return {
-            "matched":   True,
-            "source":    "cache",
-            "file_name": file_name,
-            "xml":       cache.read_text(encoding="utf-8"),
-        }
-
-    local = find_local_score(file_name)
-    if local is not None:
-        try:
-            score    = music21.converter.parse(str(local))
-            exporter = music21.musicxml.m21ToXml.GeneralObjectExporter(score)
-            xml_str  = exporter.parse().decode("utf-8", errors="replace")
-            cache.write_text(xml_str, encoding="utf-8")
-            return {"matched": True, "source": f"imslp:{local.name}",
-                    "file_name": file_name, "xml": xml_str}
-        except Exception as e:
-            raise HTTPException(500, f"music21 parse failed for {local.name}: {e}")
-
-    midi_path = find_midi_file(file_name)
-    if midi_path is not None:
-        try:
-            score    = music21.converter.parse(str(midi_path))
-            exporter = music21.musicxml.m21ToXml.GeneralObjectExporter(score)
-            xml_str  = exporter.parse().decode("utf-8", errors="replace")
-            cache.write_text(xml_str, encoding="utf-8")
-            return {"matched": True, "source": f"midi:{midi_path.name}",
-                    "file_name": file_name, "xml": xml_str}
-        except Exception as e:
-            raise HTTPException(500, f"music21 MIDI conversion failed: {e}")
-
-    base = re.sub(r"_\d+$", "", file_name)
-    stem = _SCORE_MAP.get(base)
-    return {
-        "matched":       False,
-        "file_name":     file_name,
-        "expected_file": f"scores/{stem}.mxl" if stem else None,
-        "message": (
-            f"No score found. Place the MusicXML file at scores/{stem}.mxl"
-            if stem else
-            f"'{file_name}' is not in the score map."
-        ),
-    }
+    """Serve MusicXML for a piece from MusicXML/."""
+    path = find_musicxml(file_name)
+    if path is None:
+        raise HTTPException(404, f"No MusicXML found for '{file_name}' in MusicXML/")
+    if path.suffix.lower() == ".mxl":
+        xml_bytes = extract_mxl(path)
+    else:
+        xml_bytes = path.read_bytes()
+    return Response(content=xml_bytes, media_type="text/xml")
 
 
 @router.get("/api/score/mxl_notes/{file_name}")
