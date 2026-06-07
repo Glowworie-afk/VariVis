@@ -8,18 +8,16 @@ shared across all performer versions of the same piece since it comes from the
 composition itself, not the audio recording.
 
 Used by:
-  - add_score_pitch.py  (CLI, calls process_file)
-  - api/upload.py       (calls build_score_contours directly for uploaded MXL)
+  - api/upload.py  (calls build_score_contours directly for uploaded MXL)
 """
 
-import json
 import re
 import zipfile
 from pathlib import Path
 
 import numpy as np
 
-from app.core.config import FEATURE_DIR, MUSICXML_DIR
+from app.core.config import MUSICXML_DIR
 
 CHROMA_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -219,49 +217,3 @@ def build_score_contours(piece_stem: str) -> "dict[int, dict] | None":
 
     return result
 
-
-# ── Dataset pipeline ──────────────────────────────────────────────────────────
-
-def process_file(file_name: str):
-    """Add score-pitch contour to an existing features JSON in-place."""
-    if "_bp_notes" in file_name:
-        return
-
-    json_path = FEATURE_DIR / f"{file_name}.json"
-    if not json_path.exists():
-        print(f"✗ JSON not found: {json_path}")
-        return
-
-    piece_stem = re.sub(r"_\d+$", "", file_name)
-    print(f"{file_name}: building score contours ({piece_stem}) … ", end="", flush=True)
-
-    contours = build_score_contours(piece_stem)
-    if contours is None:
-        print("no MusicXML, skipped")
-        return
-    print(f"{len(contours)} sections found")
-
-    with open(json_path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    matched = 0
-    for seg in data["segments"]:
-        lbl = seg["label"]
-        k   = label_key(lbl)
-        if k not in contours:
-            print(f"  {lbl:8s} → no matching MXL section, skipped")
-            continue
-        if "pitch_contour" not in seg["features"]:
-            seg["features"]["pitch_contour"] = {}
-        seg["features"]["pitch_contour"].update(contours[k])
-        c = contours[k]
-        print(
-            f"  {lbl:8s} beats={len(c['score_beat_midi']):3d}  "
-            f"key={c['score_tonic_name']}{'maj' if c['score_is_major'] else 'min'}  "
-            f"r={c['score_key_correlation']:.2f} ✓"
-        )
-        matched += 1
-
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"  → saved ({matched}/{len(data['segments'])} matched): {json_path.name}")

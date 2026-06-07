@@ -4,18 +4,12 @@ app/services/pitch_contour.py
 pYIN melody pitch contour extraction + Temperley key detection.
 
 Used by:
-  - add_pitch_contour.py  (CLI, calls process_file)
-  - api/pieces.py upload path  (calls extract_pitch_contour directly)
+  - api/upload.py  (calls extract_pitch_contour directly)
 """
-
-import json
-from pathlib import Path
 
 import librosa
 import numpy as np
 from scipy.interpolate import interp1d
-
-from app.core.config import AUDIO_DIR, FEATURE_DIR
 
 CHROMA_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -147,53 +141,3 @@ def extract_pitch_contour(y: np.ndarray, sr: int,
         **key_info,
     }
 
-
-# ── Dataset pipeline ──────────────────────────────────────────────────────────
-
-def process_file(file_name: str):
-    """Add pYIN pitch contour to an existing features JSON in-place."""
-    json_path = FEATURE_DIR / f"{file_name}.json"
-    if not json_path.exists():
-        print(f"✗ JSON not found: {json_path}")
-        return
-
-    with open(json_path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    folder   = data["metadata"]["folder"]
-    sr_orig  = data["metadata"].get("sample_rate")
-    wav_path = AUDIO_DIR / folder / f"{file_name}.wav"
-    if not wav_path.exists():
-        print(f"✗ WAV not found: {wav_path}")
-        return
-
-    print(f"\n{file_name}: loading WAV…")
-    y_full, sr = librosa.load(str(wav_path), sr=sr_orig, mono=True)
-    n_frames   = data["metadata"].get("compressed_frames", 64)
-
-    for seg in data["segments"]:
-        label, start_sec, end_sec = seg["label"], seg["start_sec"], seg["end_sec"]
-        print(f"  {label:4s} {start_sec:.1f}s–{end_sec:.1f}s … ", end="", flush=True)
-        s     = int(start_sec * sr)
-        e     = min(int(end_sec * sr), len(y_full))
-        y_seg = y_full[s:e]
-        chroma = seg["features"].get("chroma_chromatic", [0.0] * 12)
-        try:
-            pc = extract_pitch_contour(y_seg, sr, chroma, n_frames)
-            seg["features"]["pitch_contour"] = pc
-            print(
-                f"key={pc['tonic_name']}{'maj' if pc['is_major'] else 'min'} "
-                f"r={pc['key_correlation']:.2f}  voiced={pc['voiced_ratio']:.2f}  "
-                f"beats={len(pc['beat_midi'])} ✓"
-            )
-        except Exception as ex:
-            seg["features"]["pitch_contour"] = {
-                "n_frames": n_frames, "midi": [], "midi_relative": [],
-                "beat_midi": [], "beat_midi_relative": [], "voiced_ratio": 0.0,
-                "error": str(ex),
-            }
-            print(f"error: {ex}")
-
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"✓ saved: {json_path.name}")

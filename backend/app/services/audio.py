@@ -1,28 +1,16 @@
 """
 app/services/audio.py
 ─────────────────────
-Audio feature extraction logic for the VariVis pipeline.
-
-Covers:
-  - Segment-level audio feature extraction (chroma, MFCC, RMS, onset,
-    spectral, Tonnetz, chord recognition, compressed time-series, pYIN).
-  - Dataset pipeline: load annotation → slice WAV → extract → save JSON.
+Segment-level audio feature extraction (chroma, MFCC, RMS, onset,
+spectral, Tonnetz, chord recognition, compressed time-series, pYIN).
 
 Used by:
-  - extract_features.py  (CLI, calls process_file + save_features)
-  - api/pieces.py        (SSE extraction endpoint, spawns extract_features.py
-                          as subprocess; upload path calls extract_segment_features directly)
+  - api/upload.py  (calls extract_segment_features directly)
 """
-
-import json
-from datetime import datetime
-from pathlib import Path
 
 import librosa
 import numpy as np
-import pandas as pd
 
-from app.core.config import AUDIO_DIR, ANNOTATION, FEATURE_DIR
 
 # ── Music constants ───────────────────────────────────────────────────────────
 
@@ -256,108 +244,3 @@ def extract_segment_features(y: np.ndarray, sr: int, label: str, compressed_fram
 
     return features
 
-
-# ── Dataset pipeline ──────────────────────────────────────────────────────────
-
-def load_annotation() -> pd.DataFrame:
-    df = pd.read_excel(ANNOTATION)
-    df["folder"] = df["folder"].ffill()
-    return df
-
-
-def get_record(df: pd.DataFrame, file_name: str) -> pd.Series:
-    col  = "file_name (folderName_number)"
-    rows = df[df[col] == file_name]
-    if rows.empty:
-        raise ValueError(f"Record not found: {file_name}")
-    return rows.iloc[0]
-
-
-def process_file(file_name: str, compressed_frames: int = 64, sample_rate: int = None) -> dict:
-    """
-    Full pipeline for one dataset recording:
-    read annotation → load WAV → slice segments → extract features → return dict.
-    """
-    print(f"\n{'='*60}\n处理: {file_name}\n{'='*60}")
-
-    df     = load_annotation()
-    record = get_record(df, file_name)
-    folder = record["folder"]
-
-    wav_path = AUDIO_DIR / folder / f"{file_name}.wav"
-    if not wav_path.exists():
-        raise FileNotFoundError(f"WAV not found: {wav_path}")
-
-    boundary_raw   = parse_list_string(record["boundary"])
-    labels         = parse_list_string(record["label"])
-    boundaries_sec = [mmss_to_seconds(b) for b in boundary_raw]
-
-    print(f"曲目: {record['music_name']}  作曲: {record['composer']}")
-    print(f"段落: {labels}  边界(秒): {boundaries_sec}")
-
-    y_full, sr = librosa.load(str(wav_path), sr=sample_rate, mono=True)
-    total_duration = len(y_full) / sr
-    print(f"已加载: {total_duration:.1f}s @ {sr}Hz")
-
-    if len(boundaries_sec) != len(labels) + 1:
-        raise ValueError(
-            f"boundary 数量({len(boundaries_sec)}) 应等于 label 数量({len(labels)})+1"
-        )
-
-    segments = []
-    for i, label in enumerate(labels):
-        start_sec = boundaries_sec[i]
-        end_sec   = boundaries_sec[i + 1]
-        print(f"  [{i:2d}] {label:4s}  {start_sec:7.1f}s → {end_sec:7.1f}s", end="  ")
-        s = int(start_sec * sr)
-        e = min(int(end_sec * sr), len(y_full))
-        y_seg = y_full[s:e]
-        if len(y_seg) < sr * 0.5:
-            print("⚠ 时长过短")
-        else:
-            print()
-        feats = extract_segment_features(y_seg, sr, label, compressed_frames)
-        segments.append({
-            "label":        label,
-            "index":        i,
-            "start_sec":    round(start_sec, 2),
-            "end_sec":      round(end_sec, 2),
-            "duration_sec": round(end_sec - start_sec, 2),
-            "features":     feats,
-        })
-
-    chord_raw  = str(record.get("chord", "")).strip()
-    chord_info = None
-    if chord_raw not in ("-", "nan", "", "None"):
-        try:
-            chord_info = parse_list_string(chord_raw)
-        except Exception:
-            pass
-
-    return {
-        "metadata": {
-            "folder":             folder,
-            "file_name":          file_name,
-            "music_name":         record["music_name"],
-            "composer":           record["composer"],
-            "period":             record.get("period", ""),
-            "instrument":         record.get("instrument", ""),
-            "variation_num":      int(record.get("variation_num", 0)),
-            "chord_annotation":   chord_info,
-            "sample_rate":        sr,
-            "total_duration_sec": round(total_duration, 2),
-            "extracted_at":       datetime.now().isoformat(),
-            "compressed_frames":  compressed_frames,
-            "cof_order":          COF_ORDER,
-            "cof_names":          COF_NAMES,
-        },
-        "segments": segments,
-    }
-
-
-def save_features(data: dict, file_name: str) -> Path:
-    out_path = FEATURE_DIR / f"{file_name}.json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"\n✓ 特征已保存: {out_path}")
-    return out_path

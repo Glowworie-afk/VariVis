@@ -261,7 +261,6 @@ def compute_symbolic_features(notes_sec: list[dict], seg_dur: float) -> dict:
     pitches   = [n["pitch"]     for n in notes_sec]
     pcs       = [p % 12         for p in pitches]
     durations = [max(n["dur_sec"], 1e-6) for n in notes_sec]
-    starts    = [n["start_sec"] for n in notes_sec]
     n         = len(notes_sec)
 
     # ── Pitch ─────────────────────────────────────────────────────────────
