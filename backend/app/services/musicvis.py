@@ -117,7 +117,6 @@ def build_chord_lookup(score) -> list:
     """
     try:
         cf = score.chordify().flatten()
-        import music21
         lookup = []
         for el in cf.getElementsByClass('Chord'):
             pcs = frozenset(p.midi % 12 for p in el.pitches)

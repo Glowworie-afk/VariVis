@@ -11,7 +11,6 @@ from fastapi.responses import Response
 from app.services.musicvis import (
     COF_NAMES,
     COF_ORDER,
-    build_chord_lookup,
     degree_to_function,
     extract_skeleton_level,
     match_skeleton_in_section,
@@ -20,7 +19,6 @@ from app.services.musicxml import (
     _SECTION_SKIP,
     extract_mxl,
     find_musicxml,
-    get_musicxml_sections,
 )
 
 router = APIRouter()
@@ -68,7 +66,7 @@ def serve_musicxml_raw(file_name: str):
 @router.get("/api/musicvis/sections/{file_name}")
 def get_sections(file_name: str):
     """Return section boundaries (Theme, Var. I, …) as global 0-based measure indices."""
-    score, path = _load_score(file_name)
+    score, _ = _load_score(file_name)
 
     try:
         import music21
@@ -305,11 +303,6 @@ def get_ornaments(file_name: str):
 def get_chordtones(file_name: str):
     """Classify every note as chord tone or non-chord tone."""
     score, _ = _load_score(file_name)
-
-    try:
-        import music21
-    except ImportError:
-        raise HTTPException(500, "music21 not installed")
 
     try:
         chordified = score.chordify()
