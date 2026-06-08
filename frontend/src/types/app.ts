@@ -3,7 +3,7 @@ import type { PieceData } from './features'
 
 export type Lang = 'zh' | 'en'
 
-export type PieceViewState = 'loading' | 'ready' | 'error'
+type PieceViewState = 'loading' | 'ready' | 'error'
 
 export interface LoadedPiece {
   meta:      PieceMeta

@@ -16,7 +16,7 @@ export function shortName(meta: PieceMeta): string {
 }
 
 /** 'WAMozart_K265_3' → 'WAMozart_K265' */
-export function pieceGroupId(fileName: string): string {
+function pieceGroupId(fileName: string): string {
   const parts = fileName.split('_')
   return /^\d+$/.test(parts[parts.length - 1]) ? parts.slice(0, -1).join('_') : fileName
 }

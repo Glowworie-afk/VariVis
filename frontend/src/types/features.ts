@@ -1,11 +1,11 @@
 // VariVis — TypeScript interfaces matching backend JSON output
 
-export interface DominantPitch {
+interface DominantPitch {
   name: string       // e.g. "C", "G"
   cof_index: number  // position in circle-of-fifths order (0–11)
 }
 
-export interface CompressedFeatures {
+interface CompressedFeatures {
   n_frames: number           // 64
   rms: number[]              // [64]  energy envelope
   spectral_centroid: number[] // [64]  brightness
@@ -14,7 +14,7 @@ export interface CompressedFeatures {
                              //        (available after re-running extraction; absent in older JSON)
 }
 
-export interface SegmentFeatures {
+interface SegmentFeatures {
   // ── Harmony / Tonality ──
   chroma_chromatic: number[]     // [12] chromatic order
   chroma_cof: number[]           // [12] circle-of-fifths order (sum ≈ 1)
@@ -60,7 +60,7 @@ export interface SegmentFeatures {
   pitch_contour?: PitchContourData
 }
 
-export interface PitchContourData {
+interface PitchContourData {
   // ── Score-MIDI derived (preferred) — added by add_score_pitch.py ──
   score_beat_midi?:            number[]  // [N]  highest note per beat (absolute MIDI)
   score_beat_midi_relative?:   number[]  // [N]  semitones from tonic  (0 = tonic)
@@ -94,7 +94,7 @@ export interface Segment {
   features: SegmentFeatures
 }
 
-export interface PieceMetadata {
+interface PieceMetadata {
   folder: string
   file_name: string
   music_name: string

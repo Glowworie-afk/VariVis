@@ -106,7 +106,7 @@ interface CardProps {
   fillWidth?: boolean
 }
 
-export function ContourCard({ segment, range, theme, isDark, isPrimary, isSecondary, onClick, fillWidth }: CardProps) {
+function ContourCard({ segment, range, theme, isDark, isPrimary, isSecondary, onClick, fillWidth }: CardProps) {
   const cd     = useMemo(() => getContourData(segment), [segment])
   const norm   = useMemo(() => normaliseContour(cd.values, range), [cd.values, range])
   const col    = labelColor(segment.index)

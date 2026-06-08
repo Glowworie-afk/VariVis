@@ -4,7 +4,7 @@ export const COMPOSER_GROUPS = [
   { key: 'JHaydn',     label: 'Haydn',     zh: '海顿'   },
 ] as const
 
-export const PIECE_COLORS: Array<{ from: string; to: string }> = [
+const PIECE_COLORS: Array<{ from: string; to: string }> = [
   { from: '#4361EE', to: '#7C3AED' },
   { from: '#06B6D4', to: '#10B981' },
   { from: '#F59E0B', to: '#EF4444' },

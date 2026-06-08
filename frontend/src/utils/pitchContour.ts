@@ -36,7 +36,7 @@ const COF_TO_CHROMA = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]
  * This range is fixed regardless of the piece so that ALL segments
  * across ALL pieces share the same visual scale.
  */
-export const RELATIVE_RANGE = { min: -5, max: 24 }
+const RELATIVE_RANGE = { min: -5, max: 24 }
 
 // Interval names for Y-axis labels (relative semitones)
 const INTERVAL_LABELS: Record<number, string> = {
@@ -275,7 +275,7 @@ export function yAxisTicks(range: ContourRange, mode: ContourMode, tonicName?: s
  * Returns the optimal warping path as an ordered list of [i, j] index pairs,
  * where i indexes sequence a and j indexes sequence b.
  */
-export function dtw(a: number[], b: number[]): [number, number][] {
+function dtw(a: number[], b: number[]): [number, number][] {
   const n = a.length
   const m = b.length
 
@@ -334,7 +334,7 @@ export function dtwWarpOntoA(a: number[], b: number[]): number[] {
  * Used to compare melodic contour (shape) rather than absolute pitch,
  * making the similarity score invariant to transposition.
  */
-export function demean(arr: number[]): number[] {
+function demean(arr: number[]): number[] {
   if (arr.length === 0) return []
   const mean = arr.reduce((s, v) => s + v, 0) / arr.length
   return arr.map(v => v - mean)
@@ -360,12 +360,6 @@ export function dtwSimilarity(a: number[], bWarped: number[]): { meanDiff: numbe
   return { meanDiff, similarity }
 }
 
-/** Convert MIDI note number to note name (e.g. 60 → "C4") */
-export function midiToNoteName(midi: number): string {
-  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
-  const oct   = Math.floor(midi / 12) - 1
-  return `${names[Math.round(midi) % 12]}${oct}`
-}
 
 // ─────────────────────────────────────────────────────────────────
 // SVG path generation

@@ -20,37 +20,6 @@ export const CHROMA_COLORS_SCIENTIFIC: string[] = [
   'hsl(330,70%,52%)',  // F   rose
 ]
 
-/**
- * Mode indicator dot color.
- * mode_score ∈ [-1, +1]: +1 = major, -1 = minor
- * Interpolates: major (#E76F51 warm) → neutral (#8D99AE) → minor (#4895EF cool)
- */
-export function modeColor(modeScore: number): string {
-  const t = (modeScore + 1) / 2   // map [-1,1] → [0,1]
-  if (t >= 0.5) {
-    // neutral → major: 0.5→1  maps to gray→orange
-    const s = (t - 0.5) * 2
-    const r = Math.round(141 + s * (231 - 141))
-    const g = Math.round(153 + s * (111 - 153))
-    const b = Math.round(174 + s * (81  - 174))
-    return `rgb(${r},${g},${b})`
-  } else {
-    // minor → neutral: 0→0.5  maps to blue→gray
-    const s = t * 2
-    const r = Math.round(72  + s * (141 - 72))
-    const g = Math.round(149 + s * (153 - 149))
-    const b = Math.round(239 + s * (174 - 239))
-    return `rgb(${r},${g},${b})`
-  }
-}
-
-/**
- * COF position index → hue in degrees (for background tint)
- */
-export function cofHue(cofIndex: number): number {
-  return cofIndex * 30
-}
-
 // Distinct colours per segment index (used for pitch contour labels)
 const LABEL_COLORS = [
   '#4CC9F0', '#F72585', '#7209B7', '#3A0CA3',

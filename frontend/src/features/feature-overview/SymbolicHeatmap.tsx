@@ -701,5 +701,3 @@ export function SymbolicHeatmap({ fileName, musicName }: Props) {
     </div>
   )
 }
-
-export default SymbolicHeatmap
