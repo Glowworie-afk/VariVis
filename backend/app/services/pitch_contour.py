@@ -141,3 +141,20 @@ def extract_pitch_contour(y: np.ndarray, sr: int,
         **key_info,
     }
 
+
+def extract_mxl_pitch_contour(mxl_sections: list) -> list[dict]:
+    """Derive simplified pitch contours from MusicXML note data per section."""
+    result = []
+    for sec in mxl_sections:
+        if sec["label"] == "C":
+            continue
+        notes = sec["notes_sec"]
+        if not notes:
+            result.append({"beat_midi": [], "midi_relative": []})
+            continue
+        pitches = [n["pitch"] for n in sorted(notes, key=lambda x: x["start_sec"])]
+        indices = [int(i * (len(pitches) - 1) / 63) for i in range(min(64, len(pitches)))]
+        sampled = [pitches[i] for i in indices]
+        mean_p  = sum(sampled) / len(sampled)
+        result.append({"beat_midi": sampled, "midi_relative": [p - mean_p for p in sampled]})
+    return result

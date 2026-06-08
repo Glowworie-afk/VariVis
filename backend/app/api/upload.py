@@ -10,7 +10,6 @@ Available views by input combination:
 """
 
 import json
-import math
 import shutil
 import tempfile
 import uuid
@@ -21,9 +20,11 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.core.config import IMSLP_DIR, MUSICXML_DIR, TEMP_FEATURE_DIR
-from app.services.pitch_contour import extract_pitch_contour
+from app.services.audio import COF_NAMES, COF_ORDER, extract_audio_segment
+from app.services.pitch_contour import extract_mxl_pitch_contour
 from app.services.score_pitch import build_score_contours, label_key
 from app.services.symbolic import parse_mxl_symbolic
+from app.services.upload import auto_labels, parse_boundaries
 
 try:
     import librosa
@@ -31,200 +32,6 @@ except ImportError:
     librosa = None  # type: ignore
 
 router = APIRouter()
-
-COF_ORDER = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]
-COF_NAMES = ["C", "G", "D", "A", "E", "B", "F#", "Db", "Ab", "Eb", "Bb", "F"]
-CHROMA_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-
-
-def _mmss_to_sec(value: float) -> float:
-    minutes = int(value)
-    seconds = round((value - minutes) * 100, 1)
-    return float(minutes * 60 + seconds)
-
-
-def _parse_boundaries(raw: str) -> list[float]:
-    parts = [p.strip() for p in raw.split(",") if p.strip()]
-    secs  = []
-    for p in parts:
-        try:
-            secs.append(_mmss_to_sec(float(p)))
-        except ValueError:
-            pass
-    return sorted(secs)
-
-
-def _auto_labels(n_segments: int) -> list[str]:
-    return ["T"] + [f"V{i}" for i in range(1, n_segments)]
-
-
-def _safe_float(v) -> float:
-    try:
-        x = float(v)
-        return 0.0 if (math.isnan(x) or math.isinf(x)) else x
-    except Exception:
-        return 0.0
-
-
-def _safe_list(arr) -> list:
-    return [] if arr is None else [_safe_float(x) for x in arr]
-
-
-def _chroma_to_cof(chroma: list) -> list:
-    return [chroma[i] for i in COF_ORDER]
-
-
-def _extract_audio_segment(y, sr, label: str, compressed_frames: int = 64) -> dict:
-    """Full audio feature extraction for one uploaded segment."""
-    if librosa is None:
-        raise RuntimeError("librosa / numpy not installed")
-
-    feats: dict = {}
-
-    chroma_cqt  = librosa.feature.chroma_cqt(y=y, sr=sr, bins_per_octave=36)
-    chroma_mean = np.mean(chroma_cqt, axis=1)
-    chroma_norm = chroma_mean / (chroma_mean.sum() + 1e-8)
-    feats["chroma_chromatic"] = _safe_list(chroma_norm)
-    feats["chroma_cof"]       = _safe_list(_chroma_to_cof(chroma_norm.tolist()))
-    dp_pc = int(np.argmax(chroma_norm))
-    feats["dominant_pitch"] = {
-        "name":      CHROMA_NAMES[dp_pc],
-        "cof_index": COF_ORDER.index(dp_pc),
-    }
-
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    feats["mfcc_mean"] = _safe_list(np.mean(mfcc, axis=1))
-    feats["mfcc_std"]  = _safe_list(np.std(mfcc, axis=1))
-
-    rms      = librosa.feature.rms(y=y)[0]
-    rms_mean = float(np.mean(rms))
-    rms_max  = float(np.max(rms))
-    rms_min_nz = float(np.min(rms[rms > 1e-6])) if np.any(rms > 1e-6) else 1e-6
-    feats["rms_mean"]         = _safe_float(rms_mean)
-    feats["rms_std"]          = _safe_float(np.std(rms))
-    feats["rms_max"]          = _safe_float(rms_max)
-    feats["dynamic_range_db"] = _safe_float(
-        20 * math.log10(rms_max / rms_min_nz) if rms_max > 1e-6 else 0.0
-    )
-
-    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-    feats["spectral_centroid_mean"] = _safe_float(np.mean(centroid))
-    feats["spectral_centroid_std"]  = _safe_float(np.std(centroid))
-
-    onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units="time")
-    duration_sec = len(y) / sr
-    feats["onset_density"] = _safe_float(
-        len(onset_frames) / duration_sec if duration_sec > 0 else 0
-    )
-    if len(onset_frames) >= 3:
-        intervals = np.diff(onset_frames)
-        mean_ioi  = float(np.mean(intervals))
-        std_ioi   = float(np.std(intervals))
-        cov = std_ioi / mean_ioi if mean_ioi > 0 else 1.0
-        feats["rhythm_regularity"] = _safe_float(1.0 / (1.0 + cov))
-    else:
-        feats["rhythm_regularity"] = 0.5
-
-    try:
-        tempo_arr, _ = librosa.beat.beat_track(y=y, sr=sr)
-        feats["tempo"] = _safe_float(float(np.squeeze(tempo_arr)))
-    except Exception:
-        feats["tempo"] = 0.0
-
-    try:
-        harm = librosa.effects.harmonic(y=y)
-        tnet = librosa.feature.tonnetz(y=harm, sr=sr)
-        feats["tonnetz_mean"] = _safe_list(np.mean(tnet, axis=1))
-    except Exception:
-        feats["tonnetz_mean"] = [0.0] * 6
-
-    try:
-        chroma_stft = librosa.feature.chroma_stft(y=y, sr=sr)
-        chroma_avg  = np.mean(chroma_stft, axis=1)
-        templates   = np.zeros((24, 12))
-        for r in range(12):
-            templates[r,      [r, (r + 4) % 12, (r + 7) % 12]] = 1.0
-            templates[r + 12, [r, (r + 3) % 12, (r + 7) % 12]] = 1.0
-        norms = np.linalg.norm(templates, axis=1)
-        sims  = templates @ chroma_avg / (norms * (np.linalg.norm(chroma_avg) + 1e-8) + 1e-8)
-        best  = int(np.argmax(sims))
-        root  = best % 12
-        mode  = "major" if best < 12 else "minor"
-        feats["chord_recognition"] = {"root": root, "mode": mode,
-                                       "root_name": CHROMA_NAMES[root]}
-    except Exception:
-        feats["chord_recognition"] = {"root": 0, "mode": "major", "root_name": "C"}
-
-    try:
-        feats["zcr_mean"]               = _safe_float(float(np.mean(librosa.feature.zero_crossing_rate(y=y)[0])))
-        feats["spectral_flatness_mean"] = _safe_float(float(np.mean(librosa.feature.spectral_flatness(y=y)[0])))
-        sc = librosa.feature.spectral_contrast(y=y, sr=sr)
-        feats["spectral_contrast_mean"] = _safe_list(np.mean(sc, axis=1))
-    except Exception:
-        feats["zcr_mean"]               = 0.0
-        feats["spectral_flatness_mean"] = 0.0
-        feats["spectral_contrast_mean"] = [0.0] * 7
-
-    n = compressed_frames
-
-    def _downsample(arr_1d, target):
-        arr = np.array(arr_1d, dtype=float)
-        if len(arr) == 0:
-            return [0.0] * target
-        indices = np.linspace(0, len(arr) - 1, target).astype(int)
-        return _safe_list(arr[indices])
-
-    rms_comp      = _downsample(librosa.feature.rms(y=y)[0], n)
-    centroid_comp = _downsample(centroid, n)
-
-    chroma_cof_frames = []
-    for pc_idx in COF_ORDER:
-        row = chroma_cqt[pc_idx, :]
-        chroma_cof_frames.append(_downsample(row, n))
-
-    onset_comp = [0] * n
-    if duration_sec > 0:
-        for t in onset_frames:
-            idx = int(t / duration_sec * n)
-            if 0 <= idx < n:
-                onset_comp[idx] += 1
-
-    feats["compressed"] = {
-        "n_frames":          n,
-        "rms":               rms_comp,
-        "spectral_centroid": centroid_comp,
-        "chroma_cof":        chroma_cof_frames,
-        "onset_count":       onset_comp,
-    }
-
-    # pYIN pitch contour
-    try:
-        chroma_chromatic = feats.get("chroma_chromatic", [0.0] * 12)
-        feats["pitch_contour"] = extract_pitch_contour(y, sr, chroma_chromatic, n)
-    except Exception as _e:
-        print(f"  [upload] pitch_contour failed: {_e}")
-        feats["pitch_contour"] = {"beat_midi": [], "midi_relative": [],
-                                   "n_frames": n, "midi": []}
-
-    return feats
-
-
-def _extract_mxl_pitch_contour(mxl_sections: list) -> list[dict]:
-    """Derive simplified pitch contours from MusicXML note data per section."""
-    result = []
-    for sec in mxl_sections:
-        if sec["label"] == "C":
-            continue
-        notes = sec["notes_sec"]
-        if not notes:
-            result.append({"beat_midi": [], "midi_relative": []})
-            continue
-        pitches = [n["pitch"] for n in sorted(notes, key=lambda x: x["start_sec"])]
-        indices = [int(i * (len(pitches) - 1) / 63) for i in range(min(64, len(pitches)))]
-        sampled = [pitches[i] for i in indices]
-        mean_p  = sum(sampled) / len(sampled)
-        result.append({"beat_midi": sampled, "midi_relative": [p - mean_p for p in sampled]})
-    return result
 
 
 @router.post("/api/upload/process")
@@ -242,7 +49,7 @@ async def upload_and_process(
     if not has_mxl and not has_audio:
         raise HTTPException(400, "At least one of musicxml or audio must be provided.")
 
-    boundary_secs = _parse_boundaries(boundaries.strip()) if boundaries.strip() else []
+    boundary_secs = parse_boundaries(boundaries.strip()) if boundaries.strip() else []
     if has_audio and len(boundary_secs) < 2:
         raise HTTPException(400, "At least 2 boundary timestamps are required when audio is provided.")
 
@@ -302,7 +109,7 @@ async def upload_and_process(
                 n_segments    = 1
         else:
             n_segments = len(boundary_secs) - 1
-            labels     = _auto_labels(n_segments)
+            labels     = auto_labels(n_segments)
 
         audio_segments_y: "list | None" = None
         sr_out = 22050
@@ -332,13 +139,13 @@ async def upload_and_process(
 
             if audio_segments_y is not None and i < len(audio_segments_y):
                 try:
-                    seg["features"] = _extract_audio_segment(audio_segments_y[i], sr_out, lbl)
+                    seg["features"] = extract_audio_segment(audio_segments_y[i], sr_out)
                 except Exception as e:
                     print(f"  [upload] Audio feature extraction failed for {lbl}: {e}")
                     seg["features"] = {}
 
             if not has_audio and mxl_sections is not None:
-                pc_list = _extract_mxl_pitch_contour(mxl_sections)
+                pc_list = extract_mxl_pitch_contour(mxl_sections)
                 if i < len(pc_list):
                     seg["features"]["pitch_contour"] = pc_list[i]
 

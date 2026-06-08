@@ -15,18 +15,11 @@ from fastapi import APIRouter, HTTPException
 
 from app.core.config import FEATURE_DIR, TEMP_FEATURE_DIR
 from app.services.midi import find_midi_file
-from app.services.musicxml import extract_mxl, find_musicxml, get_musicxml_sections
 from app.services.symbolic import (
     SYMBOLIC_FEATURE_DEFS,
-    compute_distributions,
-    compute_symbolic_features,
+    compute_symbolic_midi_fallback,
     parse_mxl_symbolic,
 )
-
-try:
-    import mido
-except ImportError:
-    mido = None  # type: ignore
 
 router = APIRouter()
 
@@ -113,120 +106,12 @@ def get_symbolic_features(file_name: str):
             "Check that TV_MIDI/ contains a matching .mid file."
         )
 
-    if mido is None:
-        raise HTTPException(500, "mido not installed — run: pip install mido")
-
-    mid    = mido.MidiFile(str(midi_path))
-    tpb    = mid.ticks_per_beat or 480
-    merged = list(mido.merge_tracks(mid.tracks))
-
-    tempo_map: list[tuple[int, int]] = [(0, 500_000)]
-    abs_t = 0
-    for msg in merged:
-        abs_t += msg.time
-        if msg.type == "set_tempo":
-            tempo_map.append((abs_t, msg.tempo))
-
-    def tick2sec(tick: int) -> float:
-        sec = 0.0
-        for i, (t0, tmpo) in enumerate(tempo_map):
-            t1  = tempo_map[i + 1][0] if i + 1 < len(tempo_map) else tick
-            seg = min(t1, tick)
-            sec += (seg - t0) * tmpo / 1_000_000 / tpb
-            if seg >= tick:
-                break
-        return sec
-
-    all_notes: list[dict] = []
-    active: dict = {}
-    abs_t = 0
-    for msg in merged:
-        abs_t += msg.time
-        if msg.type == "note_on" and msg.velocity > 0:
-            active[(msg.note, msg.channel)] = abs_t
-        elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
-            key = (msg.note, msg.channel)
-            if key in active:
-                on_tick = active.pop(key)
-                on_sec  = tick2sec(on_tick)
-                off_sec = tick2sec(abs_t)
-                all_notes.append({
-                    "pitch":     msg.note,
-                    "start_sec": on_sec,
-                    "dur_sec":   max(off_sec - on_sec, 1e-6),
-                })
-
-    if not all_notes:
-        raise HTTPException(422, "No notes found in MIDI file")
-
-    # Override segments with score-based boundaries when available
-    mxl_path = find_musicxml(file_name)
-    if mxl_path is not None:
-        try:
-            import music21 as _m21
-            if mxl_path.suffix.lower() == ".mxl":
-                _score = _m21.converter.parseData(extract_mxl(mxl_path), format="musicxml")
-            else:
-                _score = _m21.converter.parse(str(mxl_path))
-
-            _sections = get_musicxml_sections(file_name)
-
-            if _sections and _score.parts:
-                _part     = _score.parts[0]
-                _measures = list(_part.getElementsByClass("Measure"))
-
-                def _measure_qn(idx: int) -> float:
-                    if idx < len(_measures):
-                        return float(_measures[idx].offset)
-                    last = _measures[-1]
-                    return float(last.offset) + float(last.duration.quarterLength)
-
-                _total_qn = _measure_qn(len(_measures))
-
-                def _qn_to_sec(qn: float) -> float:
-                    return tick2sec(int(round(qn * tpb)))
-
-                _score_segs: list[dict] = []
-                for _i, (_lbl, _midx) in enumerate(_sections):
-                    if _lbl == "Coda":
-                        continue
-                    _start_qn = _measure_qn(_midx)
-                    _end_qn: "float | None" = None
-                    for _j in range(_i + 1, len(_sections)):
-                        _nl, _nm = _sections[_j]
-                        if _nl != "Coda":
-                            _end_qn = _measure_qn(_nm)
-                            break
-                    if _end_qn is None:
-                        _end_qn = _total_qn
-
-                    _score_segs.append({
-                        "label":     _lbl,
-                        "start_sec": _qn_to_sec(_start_qn),
-                        "end_sec":   _qn_to_sec(_end_qn),
-                    })
-
-                if _score_segs:
-                    segments_meta = _score_segs
-        except Exception:
-            pass
-
-    result_segments = []
-    for sm in segments_meta:
-        seg_start = sm["start_sec"]
-        seg_end   = sm["end_sec"]
-        seg_dur   = max(seg_end - seg_start, 1e-6)
-
-        seg_notes = [n for n in all_notes if seg_start <= n["start_sec"] < seg_end]
-
-        feats = compute_symbolic_features(seg_notes, seg_dur)
-        dists = compute_distributions(seg_notes)
-        result_segments.append({
-            "label":         sm["label"],
-            "n_notes":       len(seg_notes),
-            "features":      feats,
-            "distributions": dists,
-        })
+    try:
+        result_segments = compute_symbolic_midi_fallback(file_name, segments_meta, midi_path)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
 
     return {
         "matched":      True,
