@@ -1,3 +1,539 @@
+# VariVis Product Document
+
+> Version: v1.0 · 2026-06-09
+
+---
+
+## 1. Product Overview
+
+### 1.1 One-line Definition
+
+VariVis is an interactive visual analysis system for **Theme and Variations** music. It unifies multi-dimensional features from audio recordings and MusicXML scores, enabling researchers to systematically compare variation structures visually rather than by ear.
+
+### 1.2 Target Users and Use Cases
+
+| User Type | Typical Need |
+|---|---|
+| Music theory researchers | Quantitatively compare feature differences across variations of the same theme; contrast multiple performance versions |
+| Music-background enthusiasts | Systematically understand the structural evolution of a piece without programming tools |
+
+### 1.3 Core Value Proposition
+
+A theme-and-variations work can have anywhere from a dozen to over thirty variation segments. Systematic cross-version comparison by listening alone is impractical. VariVis transforms feature data into interactive visualizations that support:
+
+- **Cross-segment comparison**: Segment Overview lays out all variations horizontally for an at-a-glance overview
+- **Multi-dimensional drill-down**: Click from the overview into a single segment to inspect pitch contour, rhythm bubbles, and similarity tree
+- **Symbolic and audio fusion**: Score-derived (MXL) and audio-derived (pYIN) features displayed side by side
+
+---
+
+## 2. System Architecture
+
+### 2.1 Technology Stack
+
+**Backend**
+
+| Item | Specification |
+|---|---|
+| Language | Python 3.11 |
+| Framework | FastAPI 0.110+, Uvicorn (ASGI) |
+| Core dependencies | librosa, numpy, scipy (audio features); music21 (MusicXML parsing); mido (MIDI); pandas + openpyxl (annotation table); pymupdf (PDF); python-multipart (file upload) |
+| Start command | `cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000` |
+
+**Frontend**
+
+| Item | Specification |
+|---|---|
+| Language | TypeScript + React 18 |
+| Build tool | Vite |
+| Key libraries | Tone.js (audio playback); pako (MXL decompression) |
+| Dev start | `cd frontend && npm run dev` |
+| API proxy | Vite proxies `/api` to `localhost:8000` during development |
+
+### 2.2 Directory Structure
+
+```
+VariVis/
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI app factory + scheduled cleanup task
+│   │   ├── core/
+│   │   │   └── config.py        # All filesystem path constants
+│   │   ├── api/                 # Router layer (HTTP request/response only)
+│   │   │   ├── pieces.py        # /api/pieces, /api/features, /api/audio
+│   │   │   ├── score.py         # /api/score/*
+│   │   │   ├── musicvis.py      # /api/musicvis/*
+│   │   │   ├── midi.py          # /api/midi/*
+│   │   │   ├── symbolic.py      # /api/symbolic/*
+│   │   │   └── upload.py        # /api/upload/*
+│   │   └── services/            # Business logic layer (independently testable)
+│   │       ├── audio.py         # Audio feature extraction
+│   │       ├── pitch_contour.py # pYIN pitch contour
+│   │       ├── symbolic.py      # Symbolic features (MXL/MIDI)
+│   │       ├── musicvis.py      # Skeleton melody analysis
+│   │       ├── score_pitch.py   # Score-based pitch contour
+│   │       ├── musicxml.py      # MXL file reading
+│   │       ├── midi.py          # MIDI parsing
+│   │       ├── score_matching.py# IMSLP PDF fuzzy matching
+│   │       └── upload.py        # Upload parameter parsing
+│   ├── data/
+│   │   ├── TV_annotation.xlsx   # Segment timestamp annotations for all pieces
+│   │   ├── TV_MIDI/             # MIDI files
+│   │   ├── IMSLP/               # PDF scores
+│   │   └── MusicXML/            # MXL scores
+│   ├── features/                # Extracted JSON feature files (one per piece)
+│   │   └── temp/                # Temporary feature files for user uploads
+│   └── tests/                   # Automated tests (unit + integration)
+│
+├── frontend/
+│   └── src/
+│       ├── App.tsx              # Layout composition
+│       ├── api/pieceApi.ts      # All backend request wrappers
+│       ├── hooks/               # useAppNav, useLoadedPieces, usePieceList, etc.
+│       ├── pages/               # CorpusView, PieceView, ScoreView
+│       ├── features/            # Components organised by business domain
+│       │   ├── drill-down/      # PitchPanel, RhythmPanel, HarmonicPanel
+│       │   ├── structural/      # SimilarityTree
+│       │   ├── feature-overview/# SegmentOverview, SymbolicHeatmap
+│       │   ├── score/           # ScorePanel
+│       │   └── extraction/      # UploadModal
+│       ├── i18n/                # LangContext + translations.ts (EN/ZH)
+│       ├── types/               # TypeScript type definitions
+│       └── utils/               # pieceHelpers, pitchContour, etc. (pure functions)
+│
+└── TV_dataset_audio/            # WAV audio files (external dataset, not in git)
+```
+
+### 2.3 Data Flow
+
+```
+TV_annotation.xlsx
+       │  read piece list + segment timestamps
+       ▼
+GET /api/pieces ──────────────────► frontend piece browser
+       │
+       │  user clicks a version
+       ▼
+GET /api/features/{file_name}
+       │  read backend/features/{name}.json
+       ▼
+frontend renders four views:
+  ├─ Segment Overview (thumbnail strip)
+  ├─ Pitch Contour Tab
+  ├─ Rhythm Timeline Tab
+  └─ Similarity Tree Tab
+
+GET /api/score/pdf/{file_name}   ──► right panel: Score (PDF)
+GET /api/musicvis/harmonics/     ──► right panel: Harmonic (MXL)
+```
+
+---
+
+## 3. Data and Content
+
+### 3.1 Built-in Dataset (TV Dataset)
+
+The dataset contains Theme and Variations works by **Beethoven, Mozart, and Haydn**, with **348 versions** currently extracted.
+
+**File naming convention**
+
+```
+{ComposerAbbrev}{CatalogNumber}_{VersionNumber}
+
+WAMozart_K265_1   → Mozart, K.265 (Twinkle Twinkle Variations), version 1
+LBeethoven_OP34_2 → Beethoven, Op.34, version 2
+JHaydn_XVII2_1    → Haydn, Hob.XVII:2, version 1
+```
+
+**Segment structure**
+
+Each piece is segmented by timestamps in `TV_annotation.xlsx`:
+
+| Label | Meaning |
+|---|---|
+| `T` | Theme |
+| `V1`, `V2`, `V3`… | Variation 1, 2, 3… |
+| `C` | Connector or Coda — skipped in some analyses |
+
+These three composers were chosen because the TAVERN dataset provides Roman-numeral harmonic annotations for their variation works, making it the most widely used quantitative foundation in T&V research. Mozart K.265 serves as a familiar reference baseline for evaluators.
+
+### 3.2 Feature Extraction Pipeline
+
+Extraction is an **offline** one-time operation run by backend scripts in batch. Results are stored as `backend/features/{file_name}.json`.
+
+**Features extracted per segment**
+
+| Category | Fields |
+|---|---|
+| Tonality / Chroma | `chroma_chromatic` (chromatic order), `chroma_cof` (circle-of-fifths order), `dominant_pitch` |
+| Pitch contour | `pitch_contour` (MIDI value sequence) — see three-tier priority in §8.1 |
+| Dynamics / Energy | `rms_mean/std/max`, `dynamic_range_db` |
+| Timbre | `mfcc_mean/std` (13-dim), `spectral_centroid_mean/std`, `spectral_contrast_mean`, `spectral_flatness_mean`, `zcr_mean`, `tonnetz_mean` |
+| Rhythm | `onset_density` (onsets/second), `tempo` (BPM) |
+| Chord recognition | `chord_recognition` (template matching) |
+| Compressed time-series | `compressed.rms`, `compressed.spectral_centroid`, `compressed.chroma_cof` (all 64 frames) |
+
+**JSON top-level structure**
+
+```json
+{
+  "metadata": {
+    "file_name": "WAMozart_K265_1",
+    "music_name": "...",
+    "composer": "Mozart",
+    "total_duration_sec": 312.5,
+    "compressed_frames": 64,
+    "cof_order": [0,7,2,9,4,11,6,1,8,3,10,5],
+    "cof_names": ["C","G","D","A","E","B","F#","Db","Ab","Eb","Bb","F"]
+  },
+  "segments": [
+    {
+      "label": "T",
+      "index": 0,
+      "start_sec": 0.0,
+      "end_sec": 45.2,
+      "duration_sec": 45.2,
+      "features": { ... }
+    }
+  ]
+}
+```
+
+### 3.3 User Uploads and Temporary Pieces
+
+Users may upload custom files (any combination) within the current session:
+
+- MusicXML / .mxl score
+- Audio file (WAV/MP3) + segment boundary timestamps (MM.SS format, comma-separated)
+- PDF score
+
+**available_views mechanism**
+
+The backend determines which views are unlocked based on the files actually provided:
+
+| `available_views` value | Corresponding view | Required file |
+|---|---|---|
+| `corpus_view` | Segment Overview + drill-down tabs | Audio or MXL (either) |
+| `symbolic_heatmap` | Feature Comparison Heatmap | MXL |
+| `harmonic_function` | Harmonic Function View | MXL with ≥2 sections |
+| `overview` | Overview statistics view | Audio |
+
+**Temporary file management**
+
+- Filenames are prefixed with `temp_`
+- Files are distributed across `features/temp/` (JSON), `data/MusicXML/` (MXL), `data/IMSLP/` (PDF)
+- Deleting from the frontend calls `DELETE /api/upload/temp/{name}` to clean up synchronously
+- The server automatically purges `temp_*` files older than 24 hours, checked every hour
+
+---
+
+## 4. User Interface
+
+### 4.1 Overall Layout
+
+```
+┌───────────────────┬──────────────────────────────┬──────────────────┐
+│   Left Sidebar    │         Main Area             │   Right Panel    │
+│                   │                              │                  │
+│  Piece browser    │  Segment Overview (top)      │  Score (PDF)     │
+│  ─────────        │  ─────────────────────       │  or              │
+│  Feature          │  Pitch Contour Tab           │  Harmonic (MXL)  │
+│  Comparison       │  Rhythm Timeline Tab         │                  │
+│  Heatmap          │  Similarity Tree Tab         │                  │
+└───────────────────┴──────────────────────────────┴──────────────────┘
+```
+
+### 4.2 Left Sidebar
+
+**Piece browser (upper half)**
+
+Three-level tree: Composer → Piece → Performance version (v1, v2…).
+
+- Click a version number to load it; multiple pieces can be loaded simultaneously for comparison
+- A green M badge indicates a matching MIDI file exists
+- The "Upload piece" button at the top opens the upload modal
+
+**Feature Comparison Heatmap (lower half)**
+
+A **segment × symbolic feature** matrix heatmap for the currently focused piece, showing Δz deviation across 30+ score-derived features for each variation. Only visible when the piece has a matching MXL file; otherwise shows "No data source".
+
+### 4.3 Main Area Views
+
+**Segment Overview (top thumbnail strip)**
+
+All segments (T, V1, V2…) laid out horizontally. Each cell renders:
+
+- A circle-of-fifths radar chart (chroma distribution)
+- A Hevner emotion label
+- Playback controls (play / pause / seek)
+
+Clicking a segment cell updates all three tabs below to show that segment's detail views.
+
+**Pitch Contour Tab**
+
+Line-card view of each variation's pitch contour. Pitch is shown relative to the tonal centre in semitones.
+
+- Click a single card to enlarge
+- Click another to overlay and compare; contour similarity score is shown
+
+Data source priority (see §8.1 for rationale):
+1. MXL score → `score_beat_midi_relative`
+2. pYIN audio → `beat_midi_relative` / `midi_relative`
+3. Chroma-inferred tonic (tonal centre only, no time-series contour)
+
+**Rhythm Timeline Tab (Rhythm Bubbles)**
+
+Bubble chart where each bubble represents one variation segment:
+
+- Bubble size = loudness (RMS)
+- Bubble opacity = local onset density
+- X-axis = time, Y-axis = variation index
+
+**Similarity Tree Tab**
+
+A Prim MST similarity tree computed from three feature dimensions — Pitch (P), Rhythm (R), Harmony (H) — rooted at the Grundgestalt (Theme).
+
+- Edge colour/weight represents the penalty k: k < 0.30 very similar → k > 0.70 divergent
+- Node labels P / R / H indicate which dimension differs most from the parent
+
+### 4.4 Right Panel
+
+Two modes toggled by buttons at the top:
+
+| Mode | Content | Data source |
+|---|---|---|
+| Score | Embedded PDF iframe | `data/IMSLP/`, fuzzy-matched by catalog number |
+| Harmonic | Interactive MusicXML renderer + harmonic function distribution bar chart | `data/MusicXML/` |
+
+The Harmonic button is only shown when the current piece has a matching MXL file. Switching to Harmonic mode hides the main area and expands the score panel to full width (see §8.2 for rationale).
+
+---
+
+## 5. Typical Usage Paths
+
+### Path A: Analysing an extracted piece
+
+```
+Start backend → Open frontend
+→ Expand a composer node in the left sidebar
+→ Click a version number (e.g. WAMozart_K265_1) to load
+→ Main area top: Segment Overview shows all variation thumbnails
+→ Click a segment thumbnail → tabs below switch to that segment's detail views
+→ Switch between Pitch Contour / Rhythm Timeline / Similarity Tree for different dimensions
+→ Right panel: view Score (PDF) or switch to Harmonic (MXL harmonic view)
+```
+
+### Path B: Uploading a custom file for temporary analysis
+
+```
+Click "Upload piece" in the left sidebar → modal opens
+→ Enter piece name (required)
+→ If uploading audio, enter segment boundary timestamps
+  (MM.SS format, comma-separated, e.g. 0.00, 1.30, 3.15)
+→ Confirm → backend processes and returns available_views
+→ A temporary piece card appears in the sidebar; main area shows available views
+→ After analysis, click × to delete; backend cleans up all associated files
+```
+
+---
+
+## 6. API Reference
+
+Base URL: `/api` (proxied to `localhost:8000` during development by Vite)
+
+### 6.1 Endpoint Quick Reference
+
+**Pieces and features**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/pieces` | List all piece metadata (reads TV_annotation.xlsx) |
+| GET | `/api/features/{file_name}` | Return extracted feature JSON; 404 = not yet extracted |
+| GET | `/api/audio/{file_name}` | Return audio file (WAV, for the player) |
+
+**Score**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/score/pdf/{file_name}` | Return matched IMSLP PDF; 404 = no match |
+| GET | `/api/score/match` | Return match result only (no file), for pre-checking |
+| GET | `/api/score/musicxml/{file_name}` | Return raw MXL XML |
+| GET | `/api/score/mxl_notes/{file_name}` | Extract notes from MXL for Tone.js synthesis |
+
+**MusicXML analysis**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/musicvis/list` | List files in the MusicXML directory |
+| GET | `/api/musicvis/xml/{file_name}` | Return decompressed XML |
+| GET | `/api/musicvis/sections/{file_name}` | Return rehearsal-mark section list |
+| GET | `/api/musicvis/chords/{file_name}` | Per-measure chords + T/S/D/O classification |
+| GET | `/api/musicvis/skeleton/{file_name}` | Theme skeleton melody (Wang et al. 2025 algorithm) |
+| GET | `/api/musicvis/ornaments/{file_name}` | Ornament highlights per variation |
+| GET | `/api/musicvis/chordtones/{file_name}` | Chord tone highlights per variation |
+| GET | `/api/musicvis/harmonics/{file_name}` | Harmonic function distribution (for the right panel) |
+
+**MIDI**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/midi/notes/{file_name}` | MIDI note list (for piano-roll rendering) |
+| GET | `/api/midi/{file_name}` | Per-variation structural analysis (tempo, key, metre, etc.) |
+
+**Symbolic features**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/symbolic/{file_name}` | 30+ symbolic features per segment + three distribution histograms |
+
+**Upload**
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/upload/process` | Upload and process a temporary piece; returns available_views |
+| GET | `/api/upload/temp_pdf/{temp_name}` | Serve a temporarily uploaded PDF |
+| DELETE | `/api/upload/temp/{temp_name}` | Delete all files associated with a temporary upload |
+
+---
+
+## 7. Glossary
+
+### 7.1 Music Terms (visible in the frontend UI)
+
+**Segment**
+VariVis divides each Theme and Variations work into structural segments: T (Theme), V1/V2… (Variations), C (Coda/Connector). Segment boundaries come from timestamps in `TV_annotation.xlsx`, or are inferred automatically from MXL rehearsal marks.
+
+**Pitch Contour**
+A line graph with time on the X-axis and MIDI pitch on the Y-axis, showing melodic shape. VariVis displays pitch relative to the tonal centre (in semitones) to enable cross-version comparison.
+
+**RMS / Loudness**
+Root mean square amplitude of the audio signal, reflecting perceived loudness. Encoded as bubble size in the Rhythm Bubbles view.
+
+**Onset Density**
+Number of note onset events per second, reflecting playing density (unit: onsets/s). Encoded as bubble opacity in the Rhythm Bubbles view.
+
+**Tonic / Subdominant / Dominant**
+The three functional categories of Western tonal harmony, corresponding to the three colour groups in the Harmonic Function Distribution bar chart. "Other" covers chords outside these categories.
+
+**Grundgestalt**
+A concept introduced by Schoenberg referring to the most fundamental motivic form of a work. In VariVis, it labels the root node of the Similarity Tree (the Theme segment), from which all variations are derived.
+
+**Major / Minor**
+The mode of a scale. VariVis annotates the current segment's mode on Pitch Contour cards and in the Score panel.
+
+### 7.2 System-specific Concepts
+
+**available_views**
+A field written into the feature JSON after the backend processes an uploaded file. It records which frontend views can be activated for that piece (see §3.3).
+
+**Temp Piece**
+A piece uploaded by the user that is not persisted to the permanent database. Filenames are prefixed with `temp_`. They can be deleted manually before the session ends; the server auto-purges them after 24 hours.
+
+**64-frame Compression (Compressed Features)**
+To normalise heatmap rendering across segments of different durations, time-series features (RMS, spectral centroid, chroma) are downsampled to a fixed 64 frames. Sample points are distributed proportionally to segment duration and stored in the `features.compressed` field.
+
+**COF Order (Circle-of-Fifths Order)**
+The internal index `[0,7,2,9,4,11,6,1,8,3,10,5]`, corresponding to pitch names `[C, G, D, A, E, B, F#, Db, Ab, Eb, Bb, F]`. All chroma-related arrays are stored in this order; adjacent pitches have stronger harmonic relationships, making heatmap visual patterns more meaningful.
+
+---
+
+## 8. Design Decision Records
+
+### 8.1 Three-tier Priority for Pitch Contour
+
+The pitch contour has three possible data sources, used in the following priority order by both frontend and backend:
+
+```
+1. score_beat_midi_relative  (MXL score)       ← highest priority
+2. beat_midi_relative / midi_relative  (pYIN)  ← second choice
+3. chroma-inferred tonic  (tonal centre only)  ← fallback
+```
+
+**Rationale**: The score source is the "ideal melody" independent of performance, unaffected by recording noise or expressive timing. pYIN reflects actual playing but is limited by recording quality. Chroma inference only yields a tonal centre, not a time-series contour.
+
+### 8.2 Harmonic Mode Expands to Full Width
+
+Switching to Harmonic (MusicXML) mode hides the main area entirely and expands the score panel to full width.
+
+**Rationale**: MusicXML renderers (OSMD/VexFlow) need sufficient width to lay out staves correctly. In a three-column layout the right panel is too narrow, causing noteheads to overlap or lines to wrap incorrectly. Full width was the simplest working solution found at the time.
+
+### 8.3 Rule-based Hevner Emotion Mapping
+
+Emotion classification uses hard-coded `if/else` rules (`pickHevnerIdx`) rather than a trained classifier.
+
+**Rationale**: Insufficient data for training; the rule logic is based on Russell V/A coordinate regions, making it interpretable and adjustable; the mappings reference typical correspondences in music psychology literature.
+
+### 8.4 Preload All Extracted Pieces at Startup
+
+On startup the app automatically calls `fetchFeatures` for all `extracted: true` pieces rather than loading on demand.
+
+**Rationale**: The corpus scatter plot in Corpus View requires data for all pieces to render completely. On-demand loading would cause data points to appear over time, creating an inconsistent experience. The trade-off is a burst of concurrent requests at startup.
+
+### 8.5 Choice of TV Dataset and Three Composers
+
+The dataset was provided by a research collaborator and comes with complete segment timestamp annotations (`TV_annotation.xlsx`). Mozart, Beethoven, and Haydn were chosen because the TAVERN dataset provides Roman-numeral harmonic annotations for their variation works, making it the most widely used quantitative foundation in T&V research.
+
+---
+
+## 9. dev Branch Change Summary
+
+The following covers all changes relative to `main` (18 + 3 commits).
+
+### Backend Refactoring
+
+| Change | Description |
+|---|---|
+| Layered `app/` architecture | Split into `api/` (router layer) + `services/` (business logic); routes contain no computation |
+| Remove legacy `server.py` | And all pipeline scripts scattered in the `backend/` root (`extract_features.py`, etc.) |
+| Data directory migration | All external data moved into `backend/data/`; path constants centralised in `core/config.py` |
+| Temporary file management | `features/temp/` separated from permanent storage; `main.py` purges expired temp files on startup and hourly |
+| Remove `SCORES_DIR` dead code | Fixes the `GET /api/score/musicxml` route |
+| Remove CLI pipeline entry points | Service modules no longer contain command-line execution logic |
+| Remove ExtractionPanel end-to-end | Frontend extraction panel + backend `/api/extract` SSE route both removed |
+
+### Frontend Refactoring
+
+| Change | Description |
+|---|---|
+| Decompose `App.tsx` | State logic extracted into `hooks/`; types moved to `types/`; target < 100 lines |
+| Centralise i18n | Replaced with `LangContext` + `translations.ts` dictionary; `lang` prop drilling removed |
+| Restructure directory | Reorganised into `features/` + `pages/` by business domain |
+| Path alias | Added `@` alias pointing to `src/` to eliminate relative-path hell |
+| Dead code removal | Unused exports removed by knip + tsc; all ESLint errors resolved |
+
+### Bug Fixes
+
+| File | Issue |
+|---|---|
+| `app/api/symbolic.py` | `compute_symbolic_features` and `compute_distributions` were called but never imported; `GET /api/symbolic/` crashed whenever an MXL file was present |
+
+### Miscellaneous
+
+- Mental Landscape dead code removed end-to-end (`mental.*` entries in `translations.ts`, display string in `UploadModal.tsx`, `available_views` entry in `upload.py`)
+- `CLAUDE.md` deleted (content consolidated into this document)
+- `.claude/` removed from git tracking
+
+---
+
+### Test Coverage
+
+| Type | Location | Cases |
+|---|---|---|
+| Pure function unit tests | `tests/test_services/` | 142 |
+| API integration tests | `tests/test_api/` | 54 |
+| **Total** | | **196** |
+
+Run command:
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m pytest tests/ -v
+```
+
+---
+---
+
 # VariVis 产品文档
 
 > 版本：v1.0 · 2026-06-09
@@ -155,7 +691,7 @@ JHaydn_XVII2_1    → Haydn，Hob.XVII:2，版本 1
 | `V1`、`V2`、`V3`… | 第 1、2、3…变奏（Variation） |
 | `C` | 连接段或尾声（Coda），部分分析中跳过 |
 
-选择这三位作曲家的原因：TAVERN 数据集已对其变奏曲提供罗马数字和声标注，是 T&V 量化研究领域最常用的基础；Mozart K.265（小星星变奏）作为西方钢琴教学标准曲目，可为评估者提供熟悉的参照基线。
+选择这三位作曲家的原因：TAVERN 数据集已对其变奏曲提供罗马数字和声标注，是 T&V 量化研究领域最常用的基础；Mozart K.265 作为西方钢琴教学标准曲目，可为评估者提供熟悉的参照基线。
 
 ### 3.2 特征提取管线
 
