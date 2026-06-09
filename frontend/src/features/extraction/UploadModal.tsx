@@ -251,7 +251,6 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
               mxlFile   ? 'Feature Comparison Heatmap' : null,
               mxlFile   ? 'Harmonic Function' : null,
               audioFile ? 'Overview' : null,
-              audioFile ? 'Mental Landscape' : null,
               pdfFile   ? 'Score (PDF)' : null,
             ].filter(Boolean).join(' · ') || '—'}
           </div>

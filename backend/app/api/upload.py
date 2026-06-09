@@ -172,7 +172,7 @@ async def upload_and_process(
             if mxl_sections is not None and len(mxl_sections) >= 2:
                 available_views += ["harmonic_function"]
         if has_audio:
-            available_views += ["overview", "mentallandscape"]
+            available_views += ["overview"]
         if has_mxl or has_audio:
             available_views.append("corpus_view")
 
