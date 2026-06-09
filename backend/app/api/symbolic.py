@@ -17,6 +17,8 @@ from app.core.config import FEATURE_DIR, TEMP_FEATURE_DIR
 from app.services.midi import find_midi_file
 from app.services.symbolic import (
     SYMBOLIC_FEATURE_DEFS,
+    compute_distributions,
+    compute_symbolic_features,
     compute_symbolic_midi_fallback,
     parse_mxl_symbolic,
 )
